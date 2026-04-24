@@ -10,54 +10,78 @@ This skill provides guidance on using the analyzer binary to analyze errors from
 ## Quick Start
 
 ```bash
-analyzer <tech-stack> <subcommand> [options]
+analyzer <tech-stack> "<full command>"
 ```
 
 ## Supported Tech Stacks
 
-| Tech Stack      | Commands                                |
-| --------------- | --------------------------------------- |
-| Cargo (Rust)    | `check`, `clippy`, `clippy-all`, `test` |
-| Mypy (Python)   | `check`, `check-strict`                 |
-| Pytest (Python) | `test`, `test-quiet`, `test-verbose`    |
-| NPM (Node.js)   | `lint`, `type-check`, `audit`           |
-| PNPM (Node.js)  | `lint`, `type-check`, `audit`           |
-| Yarn (Node.js)  | `lint`, `type-check`, `audit`           |
-| Maven (Java)    | `compile`, `test`                       |
-| Gradle (Java)   | `compile`, `test`                       |
-| Go              | `build`, `vet`, `lint`                  |
-| C++ (CMake)     | `check`, `build`                        |
-| C++ (GCC)       | `check`                                 |
-| C++ (Clang)     | `check`                                 |
-| C++ (MSVC)      | `check`                                 |
+| Tech Stack      | Description                                      |
+| --------------- | ------------------------------------------------ |
+| Cargo (Rust)    | Rust/Cargo build analyzer                        |
+| Mypy (Python)   | Python type checker analyzer                     |
+| Pytest (Python) | Python test framework analyzer                   |
+| NPM (Node.js)   | Node.js package manager analyzer (npm/pnpm/yarn) |
+| Maven (Java)    | Java Maven build analyzer                        |
+| Gradle (Java)   | Java Gradle build analyzer                       |
+| Go              | Go build and test analyzer                       |
+| C++ (CMake)     | C++ CMake build analyzer                         |
+| C++ (GCC)       | C++ GCC compiler analyzer                        |
+| C++ (Clang)     | C++ Clang compiler analyzer                      |
+| C++ (MSVC)      | C++ MSVC compiler analyzer                       |
 
 ## Common Usage Examples
 
 ```bash
 # Rust/Cargo
-analyzer cargo check
-analyzer cargo clippy
-analyzer cargo test
+analyzer cargo "check"
+analyzer cargo "clippy --all-targets"
+analyzer cargo "test"
 
-# Python
-analyzer mypy check
-analyzer pytest
+# Python/Mypy
+analyzer mypy "--show-column-numbers ."
+analyzer mypy "--strict ."
 
-# Node.js
-analyzer npm lint
-analyzer pnpm type-check
+# Python/Pytest
+analyzer pytest "-v"
+analyzer pytest "-v --tb=short"
 
-# Java
-analyzer maven compile
-analyzer gradle test
+# Node.js/NPM
+analyzer npm "run lint"
+analyzer npm "run typecheck"
+analyzer npm "audit"
+
+# Node.js/PNPM
+analyzer pnpm "run lint"
+analyzer pnpm "run typecheck"
+
+# Node.js/Yarn
+analyzer yarn "run lint"
+analyzer yarn "run typecheck"
+
+# Java/Maven
+analyzer maven "compile -q"
+analyzer maven "test"
+
+# Java/Gradle
+analyzer gradle "compileJava --quiet"
+analyzer gradle "test"
 
 # Go
-analyzer go build
-analyzer go vet
+analyzer go "build ./..."
+analyzer go "vet ./..."
+analyzer go "test -v ./..."
 
-# C++
-analyzer cpp cmake build
-analyzer cpp gcc check
+# C++/CMake
+analyzer cmake "--build build"
+
+# C++/GCC
+analyzer gcc "-fsyntax-only main.cpp"
+
+# C++/Clang
+analyzer clang "-fsyntax-only main.cpp"
+
+# C++/MSVC
+analyzer msvc "/Zs main.cpp"
 ```
 
 ## Global Options
@@ -70,6 +94,26 @@ analyzer cpp gcc check
 | `--filter-paths <paths>` | Filter errors by file paths (comma-separated)          |
 | `--verbose`              | Show all issues without truncation                     |
 | `-o, --output <file>`    | Specify output file path (default: analysis_report.md) |
+
+## Configuration
+
+Create `.analyzer.toml` in your project root to customize behavior:
+
+```toml
+version = "1.0"
+
+[global]
+default_format = "markdown"
+filter_warnings = false
+
+[commands.typecheck]
+exec = "npm run typecheck"
+description = "Run TypeScript type checker"
+tech_stacks = ["npm", "pnpm", "yarn"]
+
+[tech_stack.npm]
+test_framework = "jest"
+```
 
 ## References
 

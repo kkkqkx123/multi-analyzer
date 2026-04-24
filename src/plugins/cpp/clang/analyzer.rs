@@ -1,8 +1,8 @@
 //! Clang Analyzer
-//! Runs Clang compiler checks and parses output
+//! Runs Clang compiler commands and parses output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, SubCommand,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
     OutputParser, TechStack,
 };
 
@@ -10,61 +10,27 @@ use super::parser::ClangParser;
 
 pub struct ClangAnalyzer {
     parser: ClangParser,
-    config: Option<Config>,
 }
 
 impl ClangAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: ClangParser::new(),
-            config: None,
         }
-    }
-
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("check");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("-fsyntax-only");
 
-        // Try to get command from config first (but only for simple commands without file lists)
-        if let Some(ref config) = self.config {
-            if options.target_files.is_empty() && options.include_paths.is_empty() && options.defines.is_empty() && !options.json_output {
-                if let Some(exec_str) = config.get_command_exec("clang", command_name) {
-                    return CommandBuilder::from_exec_string(&exec_str);
-                }
-            }
-        }
-
-        // Fallback to hardcoded commands
+        // Build command directly from the command string
         let mut builder = CommandBuilder::new("clang++");
-
-        // Base warning options
-        builder = builder
-            .arg("-Wall")
-            .arg("-Wextra")
-            .arg("-Wpedantic");
-
-        // Handle subcommand
-        match options.subcommand {
-            Some(SubCommand::Check) => {
-                // Syntax check only, no output
-                builder = builder.arg("-fsyntax-only");
-            }
-            _ => {
-                // Compile only, don't link
-                builder = builder.arg("-c");
-                #[cfg(windows)]
-                {
-                    builder = builder.arg("-o").arg("NUL");
-                }
-                #[cfg(not(windows))]
-                {
-                    builder = builder.arg("-o").arg("/dev/null");
-                }
-            }
+        
+        // Add base warning options
+        builder = builder.arg("-Wall").arg("-Wextra").arg("-Wpedantic");
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
 
         // Add C++ standard if specified
@@ -88,10 +54,8 @@ impl ClangAnalyzer {
         }
 
         // Add source files
-        if !options.target_files.is_empty() {
-            for file in &options.target_files {
-                builder = builder.arg(file);
-            }
+        for file in &options.target_files {
+            builder = builder.arg(file);
         }
 
         builder
@@ -141,7 +105,7 @@ impl BuildAnalyzer for ClangAnalyzer {
     }
 
     fn supported_commands(&self) -> Vec<&str> {
-        vec!["clang", "clang++", "clang-check"]
+        vec!["clang", "clang++"]
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {

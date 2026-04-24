@@ -354,64 +354,42 @@ pub enum CommandCategory {
     Custom,     // User-defined
 }
 
-/// Subcommand Type
-/// Supports predefined commands and dynamically customized commands
+/// Subcommand is now a simple string wrapper for full command flexibility
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SubCommand {
-    // Predefined commands
-    Check,        // cargo check
-    Clippy,       // cargo clippy
-    ClippyAll,    // cargo clippy --all-targets --all-features
-    CheckTest,    // cargo check --tests
-    Compile,      // mvn compile
-    Lint,         // npm run lint
-    TypeCheck,    // npm run type-check
-    Audit,        // npm audit
-    Build,        // go build / cmake build
-    Vet,          // go vet
-    Test,         // pytest / cargo test
-    Format,       // cargo fmt / npm run format
-    // Dynamic customization commands
-    Custom(String),
-}
+pub struct SubCommand(pub String);
 
 impl SubCommand {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
     pub fn as_str(&self) -> &str {
-        match self {
-            SubCommand::Check => "check",
-            SubCommand::Clippy => "clippy",
-            SubCommand::ClippyAll => "clippy-all",
-            SubCommand::CheckTest => "check-test",
-            SubCommand::Compile => "compile",
-            SubCommand::Lint => "lint",
-            SubCommand::TypeCheck => "type-check",
-            SubCommand::Audit => "audit",
-            SubCommand::Build => "build",
-            SubCommand::Vet => "vet",
-            SubCommand::Test => "test",
-            SubCommand::Format => "format",
-            SubCommand::Custom(name) => name.as_str(),
-        }
+        &self.0
     }
 
-    /// Get the category of this subcommand
+    /// Get the category of this subcommand based on common patterns
     pub fn category(&self) -> CommandCategory {
-        match self {
-            SubCommand::Check | SubCommand::TypeCheck => CommandCategory::Check,
-            SubCommand::Clippy | SubCommand::Lint => CommandCategory::Lint,
-            SubCommand::CheckTest | SubCommand::Test => CommandCategory::Test,
-            SubCommand::Audit => CommandCategory::Audit,
-            SubCommand::Compile | SubCommand::Build => CommandCategory::Build,
-            SubCommand::Vet => CommandCategory::Check,
-            SubCommand::Custom(_) => CommandCategory::Custom,
-            SubCommand::ClippyAll => CommandCategory::Lint,
-            SubCommand::Format => CommandCategory::Format,
+        let s = self.0.to_lowercase();
+        if s.contains("check") || s.contains("type") {
+            CommandCategory::Check
+        } else if s.contains("lint") || s.contains("clippy") {
+            CommandCategory::Lint
+        } else if s.contains("test") {
+            CommandCategory::Test
+        } else if s.contains("audit") {
+            CommandCategory::Audit
+        } else if s.contains("build") || s.contains("compile") {
+            CommandCategory::Build
+        } else if s.contains("fmt") || s.contains("format") {
+            CommandCategory::Format
+        } else {
+            CommandCategory::Custom
         }
     }
 
-    /// Check if it is a customized command
+    /// All commands are treated as custom since we use free-form strings
     pub fn is_custom(&self) -> bool {
-        matches!(self, SubCommand::Custom(_))
+        true
     }
 }
 
@@ -419,27 +397,11 @@ impl std::str::FromStr for SubCommand {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "check" => Ok(SubCommand::Check),
-            "clippy" => Ok(SubCommand::Clippy),
-            "clippy-all" => Ok(SubCommand::ClippyAll),
-            "check-test" => Ok(SubCommand::CheckTest),
-            "compile" => Ok(SubCommand::Compile),
-            "lint" => Ok(SubCommand::Lint),
-            "type-check" => Ok(SubCommand::TypeCheck),
-            "audit" => Ok(SubCommand::Audit),
-            "build" => Ok(SubCommand::Build),
-            "vet" => Ok(SubCommand::Vet),
-            "test" => Ok(SubCommand::Test),
-            "format" => Ok(SubCommand::Format),
-            _ => {
-                // Support for dynamic customization of commands
-                if s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-                    Ok(SubCommand::Custom(s.to_string()))
-                } else {
-                    Err(format!("Invalid subcommand name: {}", s))
-                }
-            }
+        // Accept any non-empty string as a valid subcommand
+        if s.trim().is_empty() {
+            Err("Subcommand cannot be empty".to_string())
+        } else {
+            Ok(SubCommand(s.to_string()))
         }
     }
 }

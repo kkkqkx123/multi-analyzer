@@ -1,8 +1,8 @@
 //! MSVC Analyzer
-//! Runs Microsoft Visual C++ compiler checks and parses output
+//! Runs Microsoft Visual C++ compiler commands and parses output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, SubCommand,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
     OutputParser, TechStack,
 };
 
@@ -10,55 +10,27 @@ use super::parser::MsvcParser;
 
 pub struct MsvcAnalyzer {
     parser: MsvcParser,
-    config: Option<Config>,
 }
 
 impl MsvcAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: MsvcParser::new(),
-            config: None,
         }
-    }
-
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("check");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("/Zs");
 
-        // Try to get command from config first (but only for simple commands without file lists)
-        if let Some(ref config) = self.config {
-            if options.target_files.is_empty() && options.include_paths.is_empty() && options.defines.is_empty() && options.cpp_standard.is_none() {
-                if let Some(exec_str) = config.get_command_exec("msvc", command_name) {
-                    return CommandBuilder::from_exec_string(&exec_str);
-                }
-            }
-        }
-
-        // Fallback to hardcoded commands
+        // Build command directly from the command string
         let mut builder = CommandBuilder::new("cl");
-
-        // MSVC warning options
-        builder = builder
-            .arg("/W4")           // Highest warning level
-            .arg("/EHsc")         // Exception handling
-            .arg("/nologo");      // No copyright message
-
-        // Handle subcommand
-        match options.subcommand {
-            Some(SubCommand::Check) => {
-                // Syntax check only
-                builder = builder.arg("/Zs");
-            }
-            _ => {
-                // Compile only, don't link
-                builder = builder.arg("/c");
-                // Output to NUL
-                builder = builder.arg("/Fo").arg("NUL");
-            }
+        
+        // Add base warning options
+        builder = builder.arg("/W4").arg("/EHsc").arg("/nologo");
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
 
         // Add C++ standard if specified
@@ -85,10 +57,8 @@ impl MsvcAnalyzer {
         }
 
         // Add source files
-        if !options.target_files.is_empty() {
-            for file in &options.target_files {
-                builder = builder.arg(file);
-            }
+        for file in &options.target_files {
+            builder = builder.arg(file);
         }
 
         builder
@@ -138,7 +108,7 @@ impl BuildAnalyzer for MsvcAnalyzer {
     }
 
     fn supported_commands(&self) -> Vec<&str> {
-        vec!["msvc", "cl", "msvc-check"]
+        vec!["msvc", "cl"]
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {

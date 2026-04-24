@@ -73,6 +73,8 @@ pub trait TestOutputParser: Send + Sync {
 /// Test Options
 #[derive(Debug, Default, Clone)]
 pub struct TestOptions {
+    /// The command string to execute (e.g., "test", "run test:unit")
+    pub command: String,
     /// Test filters (e.g. test name pattern)
     pub filter: Option<String>,
     /// Run library tests only
@@ -96,8 +98,14 @@ pub struct TestOptions {
 }
 
 impl From<&AnalyzeOptions> for TestOptions {
-    fn from(_options: &AnalyzeOptions) -> Self {
+    fn from(options: &AnalyzeOptions) -> Self {
+        let command = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str().to_string())
+            .unwrap_or_default();
         Self {
+            command,
             filter: None,
             lib_only: false,
             bin: None,

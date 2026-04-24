@@ -12,6 +12,15 @@
 
 ## Issue Details (Grouped by File)
 
+### setup.py
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 1 | 1 | Error | Library stubs not installed for "setuptools"  [import-untyped] |
+| 1 | 1 | Info | Hint: "python3 -m pip install types-setuptools" |
+| 1 | 1 | Info | (or run "mypy --install-types" to install all missing stub packages) |
+| 1 | 1 | Info | See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports |
+
 ### src\main.py
 
 | Line | Column | Level | Message |
@@ -42,15 +51,6 @@
 | 79 | 20 | Error | Argument 1 to "append" of "list" has incompatible type "str"; expected "int"  [arg-type] |
 | 83 | 14 | Error | Unsupported operand types for + ("None" and "int")  [operator] |
 | 83 | 14 | Info | Left operand is of type "Optional[int]" |
-
-### setup.py
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 1 | 1 | Error | Library stubs not installed for "setuptools"  [import-untyped] |
-| 1 | 1 | Info | Hint: "python3 -m pip install types-setuptools" |
-| 1 | 1 | Info | (or run "mypy --install-types" to install all missing stub packages) |
-| 1 | 1 | Info | See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports |
 
 ## Raw Output
 

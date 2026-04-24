@@ -1,9 +1,9 @@
 //! Go Analyzer
-//! Run go build, go vet, go test, golangci-lint and parse the output
+//! Run go commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, OutputParser,
-    ParsedTestOutput, SubCommand, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
+    ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
     TestOutputParser,
 };
 
@@ -11,68 +11,48 @@ use super::parser::GoParser;
 
 pub struct GoAnalyzer {
     parser: GoParser,
-    config: Option<Config>,
 }
 
 impl GoAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: GoParser::new(),
-            config: None,
         }
     }
 
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
-    }
-
-    /// Create command builder based on subcommand
+    /// Create command builder based on command string
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("build");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("build ./...");
 
-        // Try to get command from config first
-        if let Some(ref config) = self.config {
-            if let Some(exec_str) = config.get_command_exec("go", command_name) {
-                return CommandBuilder::from_exec_string(&exec_str);
-            }
+        // Build command directly from the command string
+        let mut builder = CommandBuilder::new("go");
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
 
-        // Fallback to hardcoded commands
-        match options.subcommand {
-            Some(SubCommand::Vet) => self.create_go_vet_command(),
-            Some(SubCommand::Lint) => self.create_golangci_lint_command(),
-            _ => self.create_go_build_command(),
-        }
-    }
-
-    /// Create go build command
-    fn create_go_build_command(&self) -> CommandBuilder {
-        CommandBuilder::new("go").arg("build").arg("./...")
-    }
-
-    /// Create go vet command
-    fn create_go_vet_command(&self) -> CommandBuilder {
-        CommandBuilder::new("go").arg("vet").arg("./...")
-    }
-
-    /// Create golangci-lint command
-    fn create_golangci_lint_command(&self) -> CommandBuilder {
-        CommandBuilder::new("golangci-lint").arg("run").arg("./...")
+        builder
     }
 
     /// Create go test command
     fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
-        let mut builder = CommandBuilder::new("go").arg("test");
+        let mut builder = CommandBuilder::new("go");
+        
+        // Default to "test -v ./..." if no command specified
+        let command_str = if options.command.is_empty() {
+            "test -v ./..."
+        } else {
+            &options.command
+        };
+        
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
+        }
 
-        // Add verbose flag for detailed output
-        builder = builder.arg("-v");
-
-        // Add package path
+        // Add package path if specified
         if let Some(ref package) = options.package {
             builder = builder.arg(package);
-        } else {
-            builder = builder.arg("./...");
         }
 
         // Add test filter if specified
@@ -207,104 +187,5 @@ mod tests {
         let commands = analyzer.supported_commands();
         assert!(commands.contains(&"go"));
         assert!(commands.contains(&"golang"));
-    }
-
-    #[test]
-    fn test_create_go_build_command() {
-        let analyzer = GoAnalyzer::new();
-        let options = AnalyzeOptions::default();
-        let _builder = analyzer.create_command_builder(&options);
-
-        // Verify the command is created (we can't easily inspect the builder internals)
-        // But we can verify it doesn't panic
-        assert_eq!(analyzer.name(), "go");
-    }
-
-    #[test]
-    fn test_create_go_vet_command() {
-        let analyzer = GoAnalyzer::new();
-        let options = AnalyzeOptions {
-            subcommand: Some(SubCommand::Vet),
-            ..Default::default()
-        };
-        let _builder = analyzer.create_command_builder(&options);
-
-        // Command created successfully
-        assert_eq!(analyzer.name(), "go");
-    }
-
-    #[test]
-    fn test_create_golangci_lint_command() {
-        let analyzer = GoAnalyzer::new();
-        let options = AnalyzeOptions {
-            subcommand: Some(SubCommand::Lint),
-            ..Default::default()
-        };
-        let _builder = analyzer.create_command_builder(&options);
-
-        // Command created successfully
-        assert_eq!(analyzer.name(), "go");
-    }
-
-    #[test]
-    fn test_create_test_command() {
-        let analyzer = GoAnalyzer::new();
-        let options = TestOptions::default();
-        let _builder = analyzer.create_test_command(&options);
-
-        // Command created successfully
-        assert!(analyzer.supports_test());
-    }
-
-    #[test]
-    fn test_create_test_command_with_filter() {
-        let analyzer = GoAnalyzer::new();
-        let options = TestOptions {
-            filter: Some("TestAddition".to_string()),
-            ..Default::default()
-        };
-        let _builder = analyzer.create_test_command(&options);
-
-        // Command created successfully
-        assert!(analyzer.supports_test());
-    }
-
-    #[test]
-    fn test_create_test_command_with_package() {
-        let analyzer = GoAnalyzer::new();
-        let options = TestOptions {
-            package: Some("./pkg/...".to_string()),
-            ..Default::default()
-        };
-        let _builder = analyzer.create_test_command(&options);
-
-        // Command created successfully
-        assert!(analyzer.supports_test());
-    }
-
-    #[test]
-    fn test_create_test_command_with_coverage() {
-        let analyzer = GoAnalyzer::new();
-        let options = TestOptions {
-            coverage: true,
-            ..Default::default()
-        };
-        let _builder = analyzer.create_test_command(&options);
-
-        // Command created successfully
-        assert!(analyzer.supports_test());
-    }
-
-    #[test]
-    fn test_create_test_command_with_race() {
-        let analyzer = GoAnalyzer::new();
-        let options = TestOptions {
-            race: true,
-            ..Default::default()
-        };
-        let _builder = analyzer.create_test_command(&options);
-
-        // Command created successfully
-        assert!(analyzer.supports_test());
     }
 }

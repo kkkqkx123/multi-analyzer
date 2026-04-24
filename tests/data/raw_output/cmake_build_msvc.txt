@@ -6,7 +6,7 @@ Change Dir: 'D:/项目/cli/analyzer/tests/data/fixtures/cpp-cmake-project/build_
 
 Run Build Command(s): "D:/softwares/Visual Studio/MSBuild/Current/Bin/amd64/MSBuild.exe" ALL_BUILD.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
 适用于 .NET Framework MSBuild 版本 17.13.19+0d9f5a35a
-生成启动时间为 2026/4/22 23:48:27。
+生成启动时间为 2026/4/24 20:54:37。
 
 节点 1 上的项目“D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\build_test_full\ALL_BUILD.vcxproj”(默认目标)。
 项目“D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\build_test_full\ALL_BUILD.vcxproj”(1)正在节点 1 上生成“D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\build_test_full\ZERO_CHECK.vcxproj”(2) (默认目标)。
@@ -57,8 +57,8 @@ D:\softwares\Visual Studio\VC\Tools\MSVC\14.43.34808\include\cstdlib(32,18): err
 D:\softwares\Visual Studio\VC\Tools\MSVC\14.43.34808\include\cstdlib(32,18): error C3861: “fabsl”: 找不到标识符 [D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\build_test_full\test_app.vcxproj]
   (编译源文件“../src/utils.cpp”)
   
-D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\src\utils.cpp(9,19): error C2440: “初始化”: 无法从“int”转换为“std::basic_string<char,std::char_traits<char>,std::allocator<char>>” [D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\build_test_full\test_app.vcxproj]
   math.cpp
+D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\src\utils.cpp(9,19): error C2440: “初始化”: 无法从“int”转换为“std::basic_string<char,std::char_traits<char>,std::allocator<char>>” [D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\build_test_full\test_app.vcxproj]
       D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\src\utils.cpp(9,19):
       “std::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string”: 没有重载函数可以转换所有参数类型
           D:\softwares\Visual Studio\VC\Tools\MSVC\14.43.34808\include\xstring(744,5):
@@ -198,5 +198,5 @@ D:\项目\cli\analyzer\tests\data\fixtures\cpp-cmake-project\src\utils.cpp(9,19)
     0 个警告
     8 个错误
 
-已用时间 00:00:01.03
+已用时间 00:00:00.93
 

@@ -1,60 +1,35 @@
 //! Maven Analyzer
-//! Run mvn compile/test and parse the output
+//! Run mvn commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, OutputParser,
-    SubCommand, TechStack,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
+    TechStack,
 };
 
 use super::parser::MavenParser;
 
 pub struct MavenAnalyzer {
     parser: MavenParser,
-    config: Option<Config>,
 }
 
 impl MavenAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: MavenParser::new(),
-            config: None,
         }
-    }
-
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
     }
 
     /// Creating a command builder
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("compile");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("compile -q");
 
-        // Try to get command from config first
-        if let Some(ref config) = self.config {
-            if let Some(exec_str) = config.get_command_exec("maven", command_name) {
-                return CommandBuilder::from_exec_string(&exec_str);
-            }
-        }
-
-        // Fallback to hardcoded commands
+        // Build command directly from the command string
         let mut builder = CommandBuilder::new("mvn");
-
-        match options.subcommand {
-            Some(SubCommand::Compile) => {
-                builder = builder.arg("compile");
-            }
-            Some(SubCommand::Test) => {
-                builder = builder.arg("test");
-            }
-            _ => {
-                // By default, compile
-                builder = builder.arg("compile");
-            }
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
-
-        // Adding the -q parameter reduces output noise, but preserves error messages
-        builder = builder.arg("-q");
 
         builder
     }

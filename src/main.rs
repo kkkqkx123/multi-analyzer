@@ -1,11 +1,11 @@
 //! Analyzer - Multilingual Build Tool Error Analyzer
 //!
-//! Usage: analyzer <tech-stack> <subcommand> [options]
+//! Usage: analyzer <tech-stack> <command> [options]
 //!
 //! Examples:
-//!   analyzer cargo check
-//!   analyzer cargo clippy-all
-//!   analyzer cargo test --filter-warnings
+//!   analyzer cargo "check"
+//!   analyzer npm "run typecheck"
+//!   analyzer pnpm "exec tsc --noEmit"
 
 use std::env;
 use std::path::Path;
@@ -15,7 +15,7 @@ mod plugins;
 
 use core::{
     AnalysisResult, AnalyzeOptions, ReportFormat, ReporterFactory, SubCommand, TechStack,
-    TestAnalyzer, TestOptions, Config,
+    TestAnalyzer, TestOptions,
 };
 
 fn main() {
@@ -26,14 +26,11 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Load configuration
-    let config = Config::load(Path::new(".")).unwrap_or_default();
-
     // Parse arguments
-    let (tech_stack, options) = parse_arguments(&args, &config);
+    let (tech_stack, options) = parse_arguments(&args);
 
-    // Creating a plug-in registry with config
-    let registry = plugins::create_registry_with_config(Some(config.clone()));
+    // Creating a plug-in registry
+    let registry = plugins::create_registry();
 
     // Get the corresponding analyzer
     let analyzer = match registry.get(tech_stack) {
@@ -66,16 +63,16 @@ fn main() {
 
     if is_test_command {
         // Run test analysis
-        run_test_analysis(analyzer, &options, &config);
+        run_test_analysis(analyzer, &options);
     } else {
         // Run regular analysis
-        run_analysis(analyzer, &options, &config);
+        run_analysis(analyzer, &options);
     }
 }
 
-fn parse_arguments(args: &[String], config: &Config) -> (TechStack, AnalyzeOptions) {
+fn parse_arguments(args: &[String]) -> (TechStack, AnalyzeOptions) {
     let mut tech_stack_str = String::new();
-    let mut subcommand: Option<SubCommand> = None;
+    let mut command_str = String::new();
     let mut options = AnalyzeOptions::default();
 
     let mut i = 1;
@@ -186,16 +183,9 @@ fn parse_arguments(args: &[String], config: &Config) -> (TechStack, AnalyzeOptio
                 if !arg.starts_with('-') {
                     if tech_stack_str.is_empty() {
                         tech_stack_str = arg.to_string();
-                    } else if subcommand.is_none() {
-                        // Parse subcommand
-                        match arg.parse::<SubCommand>() {
-                            Ok(cmd) => subcommand = Some(cmd),
-                            Err(_) => {
-                                eprintln!("Error: Unknown subcommand '{}'", arg);
-                                eprintln!("Run 'analyzer --help' for usage information.");
-                                std::process::exit(1);
-                            }
-                        }
+                    } else if command_str.is_empty() {
+                        // Collect the full command string
+                        command_str = arg.to_string();
                     }
                 }
             }
@@ -209,23 +199,19 @@ fn parse_arguments(args: &[String], config: &Config) -> (TechStack, AnalyzeOptio
         std::process::exit(1);
     }
 
+    if command_str.is_empty() {
+        eprintln!("Error: No command specified");
+        show_help();
+        std::process::exit(1);
+    }
+
     // Parse tech stack
     let tech_stack: TechStack = tech_stack_str.parse().unwrap_or_else(|e| {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     });
 
-    // If no subcommand is specified, use default based on tech stack
-    if subcommand.is_none() {
-        subcommand = Some(get_default_subcommand(tech_stack));
-    }
-
-    // Apply config defaults if not overridden by CLI
-    if !options.filter_warnings && config.global.filter_warnings {
-        options.filter_warnings = true;
-    }
-
-    options.subcommand = subcommand;
+    options.subcommand = Some(SubCommand::new(command_str));
     (tech_stack, options)
 }
 
@@ -237,31 +223,15 @@ fn to_report_options(options: &AnalyzeOptions) -> core::reporter::ReportOptions 
 }
 
 fn is_test_subcommand(subcommand: &Option<SubCommand>) -> bool {
-    matches!(
-        subcommand,
-        Some(SubCommand::CheckTest) | Some(SubCommand::Test)
-    )
-}
-
-fn get_default_subcommand(tech_stack: TechStack) -> SubCommand {
-    match tech_stack {
-        TechStack::Cargo => SubCommand::Check,
-        TechStack::Maven | TechStack::Gradle => SubCommand::Compile,
-        TechStack::Npm | TechStack::Pnpm | TechStack::Yarn => SubCommand::Lint,
-        TechStack::Mypy => SubCommand::TypeCheck,
-        TechStack::Pytest => SubCommand::Test,
-        TechStack::GoBuild | TechStack::GolangciLint => SubCommand::Build,
-        TechStack::CMake => SubCommand::Check,
-        TechStack::Gcc => SubCommand::Check,
-        TechStack::Clang => SubCommand::Check,
-        TechStack::Msvc => SubCommand::Check,
-    }
+    subcommand
+        .as_ref()
+        .map(|cmd| cmd.as_str().to_lowercase().contains("test"))
+        .unwrap_or(false)
 }
 
 fn run_analysis(
     analyzer: &dyn core::BuildAnalyzer,
     options: &AnalyzeOptions,
-    _config: &Config,
 ) {
     let subcommand_name = options.subcommand.as_ref()
         .map(|s| s.as_str())
@@ -317,7 +287,6 @@ fn run_analysis(
 fn run_test_analysis(
     analyzer: &dyn core::BuildAnalyzer,
     options: &AnalyzeOptions,
-    _config: &Config,
 ) {
     // Try to downcast to TestAnalyzer
     let test_analyzer = match analyzer.as_any().downcast_ref::<&dyn TestAnalyzer>() {
@@ -381,31 +350,25 @@ fn run_test_analysis(
 fn show_help() {
     println!("analyzer - Multi-language build tool error analyzer");
     println!();
-    println!("Usage: analyzer <tech-stack> <subcommand> [options]");
+    println!("Usage: analyzer <tech-stack> <command> [options]");
     println!();
     println!("Tech Stacks:");
     println!("  cargo         Rust/Cargo projects");
     println!("  mypy          Python/Mypy projects");
+    println!("  pytest        Python/Pytest projects");
     println!("  npm           Node.js/npm projects");
     println!("  pnpm          Node.js/pnpm projects");
     println!("  yarn          Node.js/yarn projects");
     println!("  go            Go projects");
     println!("  maven         Java/Maven projects");
+    println!("  gradle        Java/Gradle projects");
+    println!("  cmake         C++/CMake projects");
+    println!("  gcc           C++/GCC projects");
+    println!("  clang         C++/Clang projects");
+    println!("  msvc          C++/MSVC projects");
     println!();
-    println!("Subcommands for Cargo:");
-    println!("  check         Fast syntax and type checking (cargo check)");
-    println!("  clippy        Run Clippy linter (cargo clippy)");
-    println!("  clippy-all    Run Clippy on all targets and features");
-    println!("  test          Run tests and analyze output (cargo test)");
-    println!();
-    println!("Subcommands for Mypy:");
-    println!("  check         Run mypy type checker");
-    println!("  check-strict  Run mypy in strict mode");
-    println!();
-    println!("Subcommands for NPM/PNPM/Yarn:");
-    println!("  lint          Run linter (npm run lint / pnpm lint / yarn lint)");
-    println!("  type-check    Run TypeScript type checker");
-    println!("  audit         Audit dependencies for vulnerabilities");
+    println!("The <command> is passed directly to the build tool.");
+    println!("Use quotes for commands with spaces.");
     println!();
     println!("Global Options:");
     println!("  -h, --help              Show this help message");
@@ -416,16 +379,18 @@ fn show_help() {
     println!("  -o, --output <file>     Output file (default: analysis_report.md)");
     println!();
     println!("Examples:");
-    println!("  analyzer cargo check");
-    println!("  analyzer cargo clippy-all");
-    println!("  analyzer cargo test --filter-warnings");
-    println!("  analyzer cargo check --filter-paths src/core,src/lib -o report.md");
-    println!("  analyzer cargo check --verbose");
-    println!("  analyzer mypy check");
-    println!("  analyzer mypy check-strict");
-    println!("  analyzer npm lint");
-    println!("  analyzer pnpm type-check");
-    println!("  analyzer yarn audit");
+    println!("  analyzer cargo \"check\"");
+    println!("  analyzer cargo \"clippy --all-targets\"");
+    println!("  analyzer cargo \"test\" --filter-warnings");
+    println!("  analyzer npm \"run lint\"");
+    println!("  analyzer npm \"run typecheck\"");
+    println!("  analyzer pnpm \"exec tsc --noEmit\"");
+    println!("  analyzer yarn \"audit\"");
+    println!("  analyzer mypy \"--strict .\"");
+    println!("  analyzer pytest \"-v\"");
+    println!("  analyzer go \"vet ./...\"");
+    println!("  analyzer maven \"compile\"");
+    println!("  analyzer gradle \"test\"");
     println!();
     println!("Cargo Workspace Options:");
     println!("  --workspace             Analyze all workspace members");

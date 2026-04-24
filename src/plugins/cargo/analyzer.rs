@@ -1,9 +1,9 @@
 //! Cargo Analyzer
-//Run cargo check/clippy/test and parse the output. Run cargo check/clippy/test and parse the output.
+//! Run cargo commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, OutputParser,
-    ParsedTestOutput, SubCommand, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
+    ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
     TestOutputParser,
 };
 
@@ -11,51 +11,24 @@ use super::parser::CargoParser;
 
 pub struct CargoAnalyzer {
     parser: CargoParser,
-    config: Option<Config>,
 }
 
 impl CargoAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: CargoParser::new(),
-            config: None,
         }
-    }
-
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("check");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("check");
 
-        // Try to get command from config first
-        if let Some(ref config) = self.config {
-            if let Some(exec_str) = config.get_command_exec("cargo", command_name) {
-                return CommandBuilder::from_exec_string(&exec_str);
-            }
-        }
-
-        // Fallback to hardcoded commands
+        // Build command directly from the command string
         let mut builder = CommandBuilder::new("cargo");
-
-        match options.subcommand {
-            Some(SubCommand::Check) => {
-                builder = builder.arg("check");
-            }
-            Some(SubCommand::Clippy) => {
-                builder = builder.arg("clippy");
-            }
-            Some(SubCommand::ClippyAll) => {
-                builder = builder.arg("clippy");
-            }
-            Some(SubCommand::CheckTest) => {
-                builder = builder.arg("check");
-            }
-            _ => {
-                builder = builder.arg("check");
-            }
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
 
         // === Workspace Options ===
@@ -117,7 +90,18 @@ impl CargoAnalyzer {
 
     /// Creating a test command
     fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
-        let mut builder = CommandBuilder::new("cargo").arg("test");
+        let mut builder = CommandBuilder::new("cargo");
+        
+        // Default to "test" if no command specified
+        let command_str = if options.command.is_empty() {
+            "test"
+        } else {
+            &options.command
+        };
+        
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
+        }
 
         if options.lib_only {
             builder = builder.arg("--lib");

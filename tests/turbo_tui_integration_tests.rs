@@ -10,10 +10,45 @@ fn turbo_project_path() -> PathBuf {
     fixtures_dir().join("sample_turbo_project")
 }
 
+fn default_analyze_options(subcommand: &str) -> analyzer::core::AnalyzeOptions {
+    analyzer::core::AnalyzeOptions {
+        subcommand: Some(analyzer::core::SubCommand::new(subcommand)),
+        filter_warnings: false,
+        filter_paths: vec![],
+        output_file: None,
+        verbose: false,
+        source_dir: None,
+        build_dir: None,
+        cmake_generator: None,
+        target: None,
+        target_files: vec![],
+        include_paths: vec![],
+        defines: vec![],
+        cpp_standard: None,
+        json_output: false,
+        workspace: false,
+        package: vec![],
+        exclude: vec![],
+        lib: false,
+        bin: vec![],
+        bins: false,
+        test: vec![],
+        tests: false,
+        example: vec![],
+        examples: false,
+        bench: vec![],
+        benches: false,
+        all_targets: false,
+        features: vec![],
+        all_features: false,
+        no_default_features: false,
+    }
+}
+
 #[test]
 fn test_turbo_tui_output_capture() {
     use analyzer::plugins::npm::NpmAnalyzer;
-    use analyzer::core::{BuildAnalyzer, AnalyzeOptions, SubCommand};
+    use analyzer::core::BuildAnalyzer;
     
     if !is_command_available("npm") {
         println!("Skipping test: npm is not available");
@@ -27,21 +62,7 @@ fn test_turbo_tui_output_capture() {
     std::env::set_current_dir(&project_path).expect("Failed to change directory");
     
     let analyzer = NpmAnalyzer::npm();
-    let options = AnalyzeOptions {
-        subcommand: Some(SubCommand::Lint),
-        filter_warnings: false,
-        filter_paths: vec![],
-        output_file: None,
-        source_dir: None,
-        build_dir: None,
-        cmake_generator: None,
-        target: None,
-        target_files: vec![],
-        include_paths: vec![],
-        defines: vec![],
-        cpp_standard: None,
-        json_output: false,
-    };
+    let options = default_analyze_options("run lint");
     
     let result = analyzer.analyze(&options);
     
@@ -147,7 +168,7 @@ web:lint:
 Cached:    0 cached, 1 total
   Time:    1.234s 
 "#;
-
+    
     // Save raw output
     save_raw_output("turbo_tui_sample", turbo_tui_output);
     

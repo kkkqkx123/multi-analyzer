@@ -23,12 +23,6 @@
 | 8 | 9 | Error | cannot find symbol |
 | 12 | 16 | Error | cannot find symbol |
 
-### D:\project\test\fixtures\maven-project\src\main\java\com\example\App.java
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 18 | 9 | Warning | [unchecked] unchecked conversion |
-
 ### pom.xml
 
 | Line | Column | Level | Message |
@@ -45,6 +39,12 @@
 | - | - | Warning | ^ |
 | - | - | Error | Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.10.1:compile (default-compile) on project maven-test-project: Compilation failure: Compilation failure: |
 | - | - | Error | -> [Help 1] |
+
+### D:\project\test\fixtures\maven-project\src\main\java\com\example\App.java
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 18 | 9 | Warning | [unchecked] unchecked conversion |
 
 ### D:\project\test\fixtures\maven-project\src\main\java\com\example\Utils.java
 

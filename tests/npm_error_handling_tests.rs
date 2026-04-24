@@ -54,10 +54,45 @@ fn create_lint_with_errors_project() -> PathBuf {
     temp_dir
 }
 
+fn default_analyze_options(subcommand: &str) -> analyzer::core::AnalyzeOptions {
+    analyzer::core::AnalyzeOptions {
+        subcommand: Some(analyzer::core::SubCommand::new(subcommand)),
+        filter_warnings: false,
+        filter_paths: vec![],
+        output_file: None,
+        verbose: false,
+        source_dir: None,
+        build_dir: None,
+        cmake_generator: None,
+        target: None,
+        target_files: vec![],
+        include_paths: vec![],
+        defines: vec![],
+        cpp_standard: None,
+        json_output: false,
+        workspace: false,
+        package: vec![],
+        exclude: vec![],
+        lib: false,
+        bin: vec![],
+        bins: false,
+        test: vec![],
+        tests: false,
+        example: vec![],
+        examples: false,
+        bench: vec![],
+        benches: false,
+        all_targets: false,
+        features: vec![],
+        all_features: false,
+        no_default_features: false,
+    }
+}
+
 #[test]
 fn test_npm_analyzer_command_failure_no_issues() {
     use analyzer::plugins::npm::NpmAnalyzer;
-    use analyzer::core::{BuildAnalyzer, AnalyzeOptions, SubCommand};
+    use analyzer::core::BuildAnalyzer;
     
     if !is_command_available("npm") {
         println!("Skipping test: npm is not available");
@@ -71,21 +106,7 @@ fn test_npm_analyzer_command_failure_no_issues() {
     std::env::set_current_dir(&temp_dir).expect("Failed to change directory");
     
     let analyzer = NpmAnalyzer::npm();
-    let options = AnalyzeOptions {
-        subcommand: Some(SubCommand::Lint),
-        filter_warnings: false,
-        filter_paths: vec![],
-        output_file: None,
-        source_dir: None,
-        build_dir: None,
-        cmake_generator: None,
-        target: None,
-        target_files: vec![],
-        include_paths: vec![],
-        defines: vec![],
-        cpp_standard: None,
-        json_output: false,
-    };
+    let options = default_analyze_options("run lint");
     
     let result = analyzer.analyze(&options);
     
@@ -155,7 +176,7 @@ Please check that the name of the config is correct.
 #[test]
 fn test_npm_analyzer_with_real_project() {
     use analyzer::plugins::npm::NpmAnalyzer;
-    use analyzer::core::{BuildAnalyzer, AnalyzeOptions, SubCommand};
+    use analyzer::core::BuildAnalyzer;
     
     if !is_command_available("npm") {
         println!("Skipping test: npm is not available");
@@ -169,21 +190,7 @@ fn test_npm_analyzer_with_real_project() {
     std::env::set_current_dir(&project_path).expect("Failed to change directory");
     
     let analyzer = NpmAnalyzer::npm();
-    let options = AnalyzeOptions {
-        subcommand: Some(SubCommand::Lint),
-        filter_warnings: false,
-        filter_paths: vec![],
-        output_file: None,
-        source_dir: None,
-        build_dir: None,
-        cmake_generator: None,
-        target: None,
-        target_files: vec![],
-        include_paths: vec![],
-        defines: vec![],
-        cpp_standard: None,
-        json_output: false,
-    };
+    let options = default_analyze_options("run lint");
     
     let result = analyzer.analyze(&options);
     
@@ -253,7 +260,7 @@ found 0 vulnerabilities
 #[test]
 fn test_pnpm_analyzer_execution() {
     use analyzer::plugins::npm::NpmAnalyzer;
-    use analyzer::core::{BuildAnalyzer, AnalyzeOptions, SubCommand};
+    use analyzer::core::BuildAnalyzer;
     
     if !is_command_available("pnpm") {
         println!("Skipping test: pnpm is not available");
@@ -267,21 +274,7 @@ fn test_pnpm_analyzer_execution() {
     std::env::set_current_dir(&project_path).expect("Failed to change directory");
     
     let analyzer = NpmAnalyzer::pnpm();
-    let options = AnalyzeOptions {
-        subcommand: Some(SubCommand::Lint),
-        filter_warnings: false,
-        filter_paths: vec![],
-        output_file: None,
-        source_dir: None,
-        build_dir: None,
-        cmake_generator: None,
-        target: None,
-        target_files: vec![],
-        include_paths: vec![],
-        defines: vec![],
-        cpp_standard: None,
-        json_output: false,
-    };
+    let options = default_analyze_options("run lint");
     
     let result = analyzer.analyze(&options);
     

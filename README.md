@@ -38,51 +38,54 @@ Pre-compiled release packages are provided for Windows users.
 ## Usage
 
 ```bash
-# Basic usage
-analyzer <tech-stack> <subcommand> [options]
+# Basic usage - free-form commands
+analyzer <tech-stack> "<full command>"
 
 # Analyze Rust project
-analyzer cargo check
-analyzer cargo clippy
-analyzer cargo test
+analyzer cargo "check"
+analyzer cargo "clippy --all-targets"
+analyzer cargo "test"
 
 # Analyze Python/Mypy project
-analyzer mypy check
-analyzer mypy --strict
-
-# Analyze Node.js project
-analyzer npm lint
-analyzer npm type-check
-analyzer npm audit
-
-# Analyze Java/Maven project
-analyzer maven compile
-analyzer maven test
-
-# Analyze Java/Gradle project
-analyzer gradle compile
-analyzer gradle test
-
-# Analyze Go project
-analyzer go build
-analyzer go test
-analyzer go vet
+analyzer mypy "--show-column-numbers ."
+analyzer mypy "--strict ."
 
 # Analyze Python/Pytest
-analyzer pytest
+analyzer pytest "-v"
+analyzer pytest "-v --tb=short"
+
+# Analyze Node.js project
+analyzer npm "run lint"
+analyzer npm "run typecheck"
+analyzer npm "audit"
+analyzer pnpm "run lint"
+analyzer pnpm "run typecheck"
+analyzer yarn "run lint"
+
+# Analyze Java/Maven project
+analyzer maven "compile -q"
+analyzer maven "test"
+
+# Analyze Java/Gradle project
+analyzer gradle "compileJava --quiet"
+analyzer gradle "test"
+
+# Analyze Go project
+analyzer go "build ./..."
+analyzer go "vet ./..."
+analyzer go "test -v ./..."
 
 # Analyze C++ project with CMake
-analyzer cpp cmake configure
-analyzer cpp cmake build
+analyzer cmake "--build build"
 
 # Analyze C++ project with GCC
-analyzer cpp gcc compile
+analyzer gcc "-fsyntax-only main.cpp"
 
 # Analyze C++ project with Clang
-analyzer cpp clang compile
+analyzer clang "-fsyntax-only main.cpp"
 
 # Analyze C++ project with MSVC
-analyzer cpp msvc compile
+analyzer msvc "/Zs main.cpp"
 ```
 
 ### Options
@@ -102,7 +105,7 @@ version = "1.0"
 default_format = "markdown"
 filter_warnings = false
 
-[commands.type-check]
+[commands.typecheck]
 exec = "npm run typecheck"
 description = "Run TypeScript type checker"
 tech_stacks = ["npm", "pnpm", "yarn"]
@@ -120,6 +123,7 @@ The tool generates comprehensive reports in multiple formats:
 - **HTML**: Styled HTML reports for web viewing
 
 Reports include:
+
 - Summary statistics
 - Error and warning type breakdown
 - Top files with issues
@@ -134,30 +138,30 @@ CLI Entry → Core Module → Plugin Module
 
 ### Core Module (core/)
 
-| Component          | Description                                            |
-|--------------------|--------------------------------------------------------|
-| `types.rs`         | Common data types (Issue, Location, AnalysisResult)   |
-| `parser.rs`        | Output parsing interface                               |
-| `analyzer.rs`      | Unified analyzer interface                             |
-| `reporter/*`       | Report generation (Markdown/JSON/HTML)                |
-| `command.rs`       | Command construction and execution                    |
-| `base_analyzer.rs` | Generic analyzer implementation                        |
+| Component          | Description                                         |
+| ------------------ | --------------------------------------------------- |
+| `types.rs`         | Common data types (Issue, Location, AnalysisResult) |
+| `parser.rs`        | Output parsing interface                            |
+| `analyzer.rs`      | Unified analyzer interface                          |
+| `reporter/*`       | Report generation (Markdown/JSON/HTML)              |
+| `command.rs`       | Command construction and execution                  |
+| `base_analyzer.rs` | Generic analyzer implementation                     |
 
 ### Plugin Module (plugins/)
 
-| Plugin   | Supported Commands                        |
-|----------|------------------------------------------|
-| Cargo    | `check`, `clippy`, `test`                 |
-| Mypy     | `mypy`, `mypy --strict`                  |
-| NPM      | `lint`, `type-check`, `audit`            |
-| Maven    | `compile`, `test`                        |
-| Gradle   | `compileJava`, `test`                    |
-| Go       | `build`, `test`, `vet`                   |
-| Pytest   | `pytest`                                 |
-| C++/CMake | `configure`, `build`                    |
-| C++/GCC  | `compile`                                |
-| C++/Clang | `compile`                               |
-| C++/MSVC | `compile`                                |
+| Plugin    | Description                                      |
+| --------- | ------------------------------------------------ |
+| Cargo     | Rust/Cargo build analyzer                        |
+| Mypy      | Python type checker analyzer                     |
+| Pytest    | Python test framework analyzer                   |
+| NPM       | Node.js package manager analyzer (npm/pnpm/yarn) |
+| Maven     | Java Maven build analyzer                        |
+| Gradle    | Java Gradle build analyzer                       |
+| Go        | Go build and test analyzer                       |
+| C++/CMake | C++ CMake build analyzer                         |
+| C++/GCC   | C++ GCC compiler analyzer                        |
+| C++/Clang | C++ Clang compiler analyzer                      |
+| C++/MSVC  | C++ MSVC compiler analyzer                       |
 
 ## Use Cases
 

@@ -1,0 +1,18 @@
+
+web:lint: 
+web:lint: > web@1.0.0 lint
+web:lint: > eslint src/
+web:lint: 
+web:lint: D:\项目\cli\analyzer\tests\data\fixtures\sample_turbo_project\apps\web\src\index.ts
+web:lint:    4:7   error    'unusedVariable' is assigned a value but never used       @typescript-eslint/no-unused-vars
+web:lint:    7:24  error    'unusedParam' is defined but never used                   @typescript-eslint/no-unused-vars
+web:lint:   12:24  warning  Unexpected any. Specify a different type                  @typescript-eslint/no-explicit-any
+web:lint:   12:36  warning  Unexpected any. Specify a different type                  @typescript-eslint/no-explicit-any
+web:lint:   17:10  error    'unusedFunction' is defined but never used                @typescript-eslint/no-unused-vars
+web:lint: 
+web:lint: ✖ 5 problems (3 errors, 2 warnings)
+web:lint: 
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    1.234s 

@@ -1,0 +1,20 @@
+╭──────────────────────────────────────────────────────────────────────────╮    
+│                                                                          │    
+│                     Update available v2.8.3 ≫ v2.9.6                     │    
+╰──────────────────────────────────────────────────────────────────────────╯    
+• turbo 2.8.3
+• Packages in scope: @graph-agent/storage
+• Running lint in 1 packages
+• Remote caching disabled
+┌─ @graph-agent/storage#lint > cache hit, replaying logs f184635148ed46e6 
+
+> @graph-agent/storage@1.0.0 lint D:\project\packages\storage
+> eslint . --ext .ts
+
+
+D:\project\packages\storage\src\json\base-json-storage.ts
+   16:3   warning  'CompressionResult' is defined but never used  @typescript-eslint/no-unused-vars
+   422:17  warning  'id' is assigned a value but never used        @typescript-eslint/no-unused-vars
+
+✖ 7 problems (0 errors, 7 warnings)
+└─ @graph-agent/storage#lint ──

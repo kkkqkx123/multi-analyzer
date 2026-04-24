@@ -18,6 +18,12 @@
 |------|--------|-------|---------|
 | 20 | 16 | Error | undefined: os |
 
+### internal/config/config.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 15 | 15 | Warning | os.Setenv call has possible formatting directive %v |
+
 ### ./main.go
 
 | Line | Column | Level | Message |
@@ -26,12 +32,6 @@
 | 18 | 14 | Warning | cannot use "hello" |
 | 21 | 10 | Warning | os.Setenv call has possible formatting directive %s |
 | 23 | 2 | Error | cfg declared but not used |
-
-### internal/config/config.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 15 | 15 | Warning | os.Setenv call has possible formatting directive %v |
 
 ## Raw Output
 

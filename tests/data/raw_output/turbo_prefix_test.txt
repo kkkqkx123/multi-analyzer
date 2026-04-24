@@ -1,0 +1,2 @@
+web:lint:    4:7   error    'unusedVariable' is assigned a value but never used  @typescript-eslint/no-unused-vars
+app:lint:     10:5  warning  Unexpected any                                     @typescript-eslint/no-explicit-any

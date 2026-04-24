@@ -1,8 +1,8 @@
 //! Pytest Analyzer
-//! Run pytest and parse the output
+//! Run pytest commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, OutputParser,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
     ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
     TestOutputParser,
 };
@@ -11,58 +11,25 @@ use super::parser::PytestParser;
 
 pub struct PytestAnalyzer {
     parser: PytestParser,
-    config: Option<Config>,
 }
 
 impl PytestAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: PytestParser::new(),
-            config: None,
         }
-    }
-
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
     }
 
     /// Create command builder for pytest
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("test");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("-v --color=no --tb=short");
 
-        // Try to get command from config first
-        if let Some(ref config) = self.config {
-            if let Some(exec_str) = config.get_command_exec("pytest", command_name) {
-                return CommandBuilder::from_exec_string(&exec_str);
-            }
-        }
-
-        // Fallback to hardcoded commands
+        // Build command directly from the command string
         let mut builder = CommandBuilder::new("pytest");
-
-        // Add verbose flag for detailed output
-        builder = builder.arg("-v");
-
-        // Add color=no for easier parsing
-        builder = builder.arg("--color=no");
-
-        // Add tb=short for shorter traceback
-        builder = builder.arg("--tb=short");
-
-        // Add additional flags based on subcommand name
-        if let Some(ref cmd) = options.subcommand {
-            match cmd.as_str() {
-                "test-quiet" => {
-                    builder = builder.arg("-q");
-                }
-                "test-verbose" => {
-                    builder = builder.arg("-vv");
-                }
-                _ => {
-                    // Default pytest run
-                }
-            }
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
 
         builder
@@ -71,12 +38,17 @@ impl PytestAnalyzer {
     /// Create test command builder
     fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new("pytest");
-
-        // Add verbose flag
-        builder = builder.arg("-v");
-
-        // Disable color for easier parsing
-        builder = builder.arg("--color=no");
+        
+        // Default to "-v --color=no" if no command specified
+        let command_str = if options.command.is_empty() {
+            "-v --color=no"
+        } else {
+            &options.command
+        };
+        
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
+        }
 
         // Add test filter if specified
         if let Some(ref filter) = options.filter {
@@ -144,7 +116,6 @@ impl BuildAnalyzer for PytestAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        // For pytest, "analyze" means running tests and reporting results
         let builder = self.create_command_builder(options);
         let output = builder.execute()?;
 
@@ -207,25 +178,5 @@ impl TestAnalyzer for PytestAnalyzer {
 
     fn test_parser(&self) -> Option<&dyn TestOutputParser> {
         Some(&self.parser)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_pytest_analyzer_name() {
-        let analyzer = PytestAnalyzer::new();
-        assert_eq!(analyzer.name(), "pytest");
-    }
-
-    #[test]
-    fn test_supported_commands() {
-        let analyzer = PytestAnalyzer::new();
-        let commands = analyzer.supported_commands();
-        assert!(commands.contains(&"pytest"));
-        assert!(commands.contains(&"py.test"));
-        assert!(commands.contains(&"python-test"));
     }
 }

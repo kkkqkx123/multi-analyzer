@@ -101,12 +101,13 @@ tech_stacks = ["npm", "pnpm", "yarn"]
     // Create pnpm analyzer with config
     let analyzer = NpmAnalyzer::pnpm().with_config(config);
     
-    // Build command options
+    // Build command options with free-form command
     let options = AnalyzeOptions {
-        subcommand: Some(SubCommand::Lint),
+        subcommand: Some(SubCommand::new("run lint")),
         filter_warnings: false,
         filter_paths: vec![],
         output_file: None,
+        verbose: false,
         source_dir: None,
         build_dir: None,
         cmake_generator: None,
@@ -116,6 +117,22 @@ tech_stacks = ["npm", "pnpm", "yarn"]
         defines: vec![],
         cpp_standard: None,
         json_output: false,
+        workspace: false,
+        package: vec![],
+        exclude: vec![],
+        lib: false,
+        bin: vec![],
+        bins: false,
+        test: vec![],
+        tests: false,
+        example: vec![],
+        examples: false,
+        bench: vec![],
+        benches: false,
+        all_targets: false,
+        features: vec![],
+        all_features: false,
+        no_default_features: false,
     };
     
     // Verify the analyzer was created correctly with pnpm tech stack

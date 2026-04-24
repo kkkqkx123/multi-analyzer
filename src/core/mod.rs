@@ -7,7 +7,6 @@ pub mod analyzer;
 pub mod reporter;
 pub mod command;
 pub mod test_analyzer;
-pub mod config;
 
 pub use types::*;
 pub use parser::*;
@@ -18,4 +17,3 @@ pub use command::CommandBuilder;
 #[allow(unused_imports)]
 pub use command::CommandOutput;
 pub use test_analyzer::*;
-pub use config::Config;

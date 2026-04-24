@@ -1,8 +1,8 @@
 //! CMake Analyzer
-//! Runs CMake configuration and build, then parses output
+//! Runs CMake commands and parses output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, Config, SubCommand,
+    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
     OutputParser, TechStack,
 };
 
@@ -10,58 +10,24 @@ use super::parser::CMakeParser;
 
 pub struct CMakeAnalyzer {
     parser: CMakeParser,
-    config: Option<Config>,
 }
 
 impl CMakeAnalyzer {
     pub fn new() -> Self {
         Self {
             parser: CMakeParser::new(),
-            config: None,
         }
-    }
-
-    pub fn with_config(mut self, config: Config) -> Self {
-        self.config = Some(config);
-        self
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_name = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("check");
+        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("--build build");
 
-        // Try to get command from config first
-        if let Some(ref config) = self.config {
-            if let Some(exec_str) = config.get_command_exec("cmake", command_name) {
-                return CommandBuilder::from_exec_string(&exec_str);
-            }
-        }
-
-        // Fallback to hardcoded commands
+        // Build command directly from the command string
         let mut builder = CommandBuilder::new("cmake");
-
-        // Get source directory (default to current directory)
-        let source_dir = options.source_dir.as_deref().unwrap_or(".");
-        // Get build directory (default to "build")
-        let build_dir = options.build_dir.as_deref().unwrap_or("build");
-
-        match options.subcommand {
-            Some(SubCommand::Check) => {
-                // Configure only, don't build
-                builder = builder.arg("-B").arg(build_dir);
-                builder = builder.arg("-S").arg(source_dir);
-                // Can specify generator
-                if let Some(ref generator) = options.cmake_generator {
-                    builder = builder.arg("-G").arg(generator);
-                }
-            }
-            _ => {
-                // Build
-                builder = builder.arg("--build").arg(build_dir);
-                // Can specify target
-                if let Some(ref target) = options.target {
-                    builder = builder.arg("--target").arg(target);
-                }
-            }
+        
+        // Split the command string and add as arguments
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
         }
 
         builder
@@ -111,7 +77,7 @@ impl BuildAnalyzer for CMakeAnalyzer {
     }
 
     fn supported_commands(&self) -> Vec<&str> {
-        vec!["cmake", "cmake-build", "cmake-check"]
+        vec!["cmake", "cmake-build"]
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {

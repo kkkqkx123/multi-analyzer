@@ -12,18 +12,18 @@
 
 ## Issue Details (Grouped by File)
 
-### cmd\myapp\main.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 22 | 28 | Warning | fmt.Printf format %d has arg "hello" of wrong type string |
-
 ### internal\config\config_test.go
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 7 | 2 | Warning | missing go.sum entry for module providing package github.com/stretchr/testify/assert |
 | 7 | 2 | Warning | missing go.sum entry for module providing package github.com/stretchr/testify/assert |
+
+### cmd\myapp\main.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 22 | 28 | Warning | fmt.Printf format %d has arg "hello" of wrong type string |
 
 ## Raw Output
 
