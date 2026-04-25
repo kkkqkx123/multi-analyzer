@@ -10,6 +10,17 @@ impl MavenParser {
         Self
     }
 
+    /// Extract module name from Maven error message
+    /// Format: "Failed to execute goal on project my-module: ..."
+    fn extract_module_from_message(&self, line: &str) -> Option<String> {
+        if line.contains("on project") {
+            let re = regex::Regex::new(r"on project\s+([^:\s]+)").ok()?;
+            let caps = re.captures(line)?;
+            return Some(caps.get(1)?.as_str().to_string());
+        }
+        None
+    }
+
     /// Parsing Maven Compile Error/Warning Lines
     /// 格式: [ERROR] /path/to/File.java:[10,5] error: message
     /// 格式: [WARNING] /path/to/File.java:[20,10] warning: message
@@ -55,7 +66,14 @@ impl MavenParser {
         // 格式: [ERROR] message
         if !content.contains(':') || content.starts_with("Failed to execute goal") {
             let location = Location::new("pom.xml");
-            return Some(Issue::new(level, content.to_string(), location));
+            let mut issue = Issue::new(level, content.to_string(), location);
+            
+            // Try to extract module name from the message
+            if let Some(module) = self.extract_module_from_message(line) {
+                issue = issue.with_package(module);
+            }
+            
+            return Some(issue);
         }
 
         None

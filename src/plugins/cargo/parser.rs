@@ -17,6 +17,24 @@ impl CargoParser {
         }
     }
 
+    /// Extract package name from file path
+    /// Cargo workspace structure: crates/package-name/src/... or packages/package-name/src/...
+    fn extract_package_from_path(&self, file_path: &str) -> Option<String> {
+        // Normalize path separators
+        let normalized = file_path.replace('\\', "/");
+        let parts: Vec<&str> = normalized.split('/').collect();
+        
+        // Look for common workspace directory names
+        for i in 0..parts.len() {
+            if (parts[i] == "crates" || parts[i] == "packages" || parts[i] == "members") 
+                && i + 1 < parts.len() {
+                return Some(parts[i + 1].to_string());
+            }
+        }
+        
+        None
+    }
+
     fn parse_single_line(&self, line: &str) -> Option<Issue> {
         let parts: Vec<&str> = line.splitn(5, ':').collect();
         if parts.len() < 5 {
@@ -42,6 +60,12 @@ impl CargoParser {
             .with_column(col_num);
 
         let mut issue = Issue::new(level, description.to_string(), location);
+        
+        // Extract package name from file path
+        if let Some(package) = self.extract_package_from_path(file_path) {
+            issue = issue.with_package(package);
+        }
+        
         if let Some(code) = self.base.extract_error_code(error_type) {
             issue = issue.with_code(code);
         }
@@ -76,7 +100,15 @@ impl CargoParser {
                 let location_part = location_part.trim();
 
                 if let Some(location) = self.parse_cargo_location(location_part) {
+                    // Extract package name from file path before moving location
+                    let package = self.extract_package_from_path(&location.file_path);
+                    
                     let mut issue = Issue::new(level, desc.to_string(), location);
+
+                    // Add package information
+                    if let Some(pkg) = package {
+                        issue = issue.with_package(pkg);
+                    }
 
                     if let Some(code) = self.base.extract_error_code(desc) {
                         issue = issue.with_code(code);

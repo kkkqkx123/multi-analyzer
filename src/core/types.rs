@@ -59,6 +59,8 @@ pub struct Issue {
     pub message: String,
     pub location: Location,
     pub context: Option<String>,
+    /// Package name (for monorepo/workspace support)
+    pub package: Option<String>,
 }
 
 impl Issue {
@@ -69,6 +71,7 @@ impl Issue {
             message: message.into(),
             location,
             context: None,
+            package: None,
         }
     }
 
@@ -81,6 +84,11 @@ impl Issue {
         self.context = Some(context.into());
         self
     }
+
+    pub fn with_package(mut self, package: impl Into<String>) -> Self {
+        self.package = Some(package.into());
+        self
+    }
 }
 
 /// Analysis results statistics
@@ -90,6 +98,8 @@ pub struct AnalysisResult {
     pub issues_by_level: HashMap<IssueLevel, usize>,
     pub issues_by_type: HashMap<String, usize>,
     pub issues_by_file: HashMap<String, Vec<Issue>>,
+    /// Issues grouped by package (for monorepo/workspace support)
+    pub issues_by_package: HashMap<String, Vec<Issue>>,
     pub unique_patterns: HashSet<String>,
 }
 
@@ -122,6 +132,13 @@ impl AnalysisResult {
         // Statistics by document
         self.issues_by_file
             .entry(issue.location.file_path.clone())
+            .or_default()
+            .push(issue.clone());
+
+        // Statistics by package
+        let package_key = issue.package.clone().unwrap_or_else(|| "unknown".to_string());
+        self.issues_by_package
+            .entry(package_key)
             .or_default()
             .push(issue);
 

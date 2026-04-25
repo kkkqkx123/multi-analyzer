@@ -1,7 +1,8 @@
 //! Markdown Report Generator
 
 use super::{ReportOptions, Reporter, ReporterError};
-use crate::core::types::{AnalysisResult, IssueLevel, TestAnalysisResult, TestStatus};
+use crate::core::types::{AnalysisResult, Issue, IssueLevel, TestAnalysisResult, TestStatus};
+use std::collections::HashMap;
 
 /// Markdown Report Generator
 pub struct MarkdownReporter;
@@ -113,7 +114,15 @@ impl MarkdownReporter {
         }
 
         report.push_str(&format!("- **Categories**: {}\n", result.unique_patterns.len()));
-        report.push_str(&format!("- **Files Affected**: {}\n\n", result.issues_by_file.len()));
+        report.push_str(&format!("- **Files Affected**: {}", result.issues_by_file.len()));
+        
+        // Add package count if we have package information
+        let has_package_info = result.issues_by_package.keys().any(|k| k != "unknown");
+        if has_package_info {
+            let package_count = result.issues_by_package.keys().filter(|k| *k != "unknown").count();
+            report.push_str(&format!("\n- **Packages Affected**: {}", package_count));
+        }
+        report.push_str("\n\n");
 
         // Statistics by type
         if !result.issues_by_type.is_empty() {
@@ -129,8 +138,85 @@ impl MarkdownReporter {
             report.push('\n');
         }
 
-        // Statistics by document
-        if !result.issues_by_file.is_empty() {
+        // NEW: Statistics by package (if we have package information)
+        if has_package_info {
+            report.push_str("## Details by Package\n\n");
+            
+            let mut packages: Vec<_> = result.issues_by_package.iter().collect();
+            packages.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+            
+            let package_limit = if options.verbose { packages.len() } else { 10 };
+            
+            for (package_name, issues) in packages.iter().take(package_limit) {
+                if *package_name == "unknown" {
+                    continue;
+                }
+                
+                report.push_str(&format!("### Package: `{}` ({} issue(s))\n\n", 
+                    package_name, issues.len()));
+                
+                // Group issues by file within this package
+                let mut files: HashMap<String, Vec<&Issue>> = HashMap::new();
+                for issue in issues.iter() {
+                    files.entry(issue.location.file_path.clone())
+                        .or_default()
+                        .push(issue);
+                }
+                
+                let mut file_list: Vec<_> = files.iter().collect();
+                file_list.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+                
+                let file_limit = if options.verbose { file_list.len() } else { 5 };
+                
+                for (file_path, file_issues) in file_list.iter().take(file_limit) {
+                    report.push_str(&format!("#### `{}` ({} item(s))\n\n", file_path, file_issues.len()));
+                    
+                    let issue_limit = if options.verbose { file_issues.len() } else { 5 };
+                    for issue in file_issues.iter().take(issue_limit) {
+                        let location = match (issue.location.line_number, issue.location.column_number) {
+                            (Some(line), Some(col)) => format!("{}:{}", line, col),
+                            (Some(line), None) => format!("{}", line),
+                            _ => "-".to_string(),
+                        };
+
+                        let code = issue.code.as_ref().map(|c| format!(" `[{}]`", c)).unwrap_or_default();
+                        let level_icon = match issue.level {
+                            IssueLevel::Error => "❌",
+                            IssueLevel::Warning => "⚠️",
+                            IssueLevel::Info => "ℹ️",
+                            IssueLevel::Hint => "💡",
+                        };
+
+                        report.push_str(&format!(
+                            "- {} **{}**{} at line {}: {}\n",
+                            level_icon, issue.level, code, location, issue.message
+                        ));
+                    }
+                    
+                    if !options.verbose && file_issues.len() > 5 {
+                        report.push_str(&format!("- ... and {} more\n", file_issues.len() - 5));
+                    }
+                    report.push('\n');
+                }
+                
+                if !options.verbose && file_list.len() > 5 {
+                    report.push_str(&format!(
+                        "*... and {} more files in this package*\n\n",
+                        file_list.len() - 5
+                    ));
+                }
+            }
+            
+            if !options.verbose && packages.len() > 10 {
+                report.push_str(&format!(
+                    "*... and {} more packages (use --verbose to see all)*\n\n",
+                    packages.len() - 10
+                ));
+            }
+        }
+
+        // Statistics by document (fallback if no package info or for detailed view)
+        if !result.issues_by_file.is_empty() && !has_package_info {
             report.push_str("## Details by File\n\n");
             let mut files: Vec<_> = result.issues_by_file.iter().collect();
             files.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
