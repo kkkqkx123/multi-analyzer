@@ -10,6 +10,7 @@
 use std::env;
 use std::path::Path;
 
+mod config;
 mod core;
 mod plugins;
 
@@ -26,8 +27,11 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Parse arguments
-    let (tech_stack, options) = parse_arguments(&args);
+    // Load configuration from file (global + project merge)
+    let config = config::ConfigLoader::new().load();
+
+    // Parse arguments (CLI overrides config)
+    let (tech_stack, options) = parse_arguments(&args, &config);
 
     // Creating a plug-in registry
     let registry = plugins::create_registry();
@@ -70,10 +74,11 @@ fn main() {
     }
 }
 
-fn parse_arguments(args: &[String]) -> (TechStack, AnalyzeOptions) {
+fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, AnalyzeOptions) {
     let mut tech_stack_str = String::new();
     let mut command_str = String::new();
-    let mut options = AnalyzeOptions::default();
+    // Seed options from configuration file, then let CLI args override
+    let mut options = AnalyzeOptions::from_config(config);
 
     let mut i = 1;
     while i < args.len() {

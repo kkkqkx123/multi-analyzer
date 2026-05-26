@@ -2,6 +2,7 @@
 //!
 //! Library interface for integration testing and external calls
 
+pub mod config;
 pub mod core;
 pub mod plugins;
 

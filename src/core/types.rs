@@ -565,6 +565,27 @@ pub struct AnalyzeOptions {
     pub no_default_features: bool,
 }
 
+impl AnalyzeOptions {
+    /// Seed AnalyzeOptions from configuration file.
+    /// CLI args should override these values after calling this.
+    pub fn from_config(config: &crate::config::AppConfig) -> Self {
+        let mut options = AnalyzeOptions::default();
+
+        options.report_format = match config.report.format.as_str() {
+            "json" => ReportFormat::Json,
+            "html" => ReportFormat::Html,
+            _ => ReportFormat::Markdown,
+        };
+        options.verbosity = match config.report.verbosity.as_str() {
+            "minimal" => Verbosity::Minimal,
+            "verbose" => Verbosity::Verbose,
+            _ => Verbosity::Normal,
+        };
+
+        options
+    }
+}
+
 /// Report format
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ReportFormat {

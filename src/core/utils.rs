@@ -77,6 +77,7 @@ pub struct OutputPostProcessor {
     pub keep_patterns: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl OutputPostProcessor {
     pub fn new() -> Self {
         Self {
