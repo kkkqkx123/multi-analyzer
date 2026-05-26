@@ -12,12 +12,12 @@
 
 ## Issue Details (Grouped by File)
 
-### D:\项目\cli\analyzer\tests/data\fixtures\cpp-cmake-project\src/main.cpp
+### D:\��Ŀ\cli\analyzer\tests/data\fixtures\cpp-cmake-project\src/main.cpp
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 5 | - | Error | “undefined_var”: 未声明的标识符 |
-| 10 | - | Error | “add”: 找不到标识符 |
+| 5 | - | Error | ��undefined_var��: δ�����ı�ʶ�� |
+| 10 | - | Error | ��add��: �Ҳ�����ʶ�� |
 
 ## Raw Output
 

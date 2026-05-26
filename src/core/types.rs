@@ -520,6 +520,7 @@ pub struct AnalyzeOptions {
     pub max_output_lines: usize,
     pub max_line_length: usize,
     pub strip_ansi: bool,
+    pub strip_tui_frames: bool,
     pub output_file: Option<String>,
     /// Verbosity level
     pub verbosity: Verbosity,
@@ -597,6 +598,7 @@ impl AnalyzeOptions {
         };
 
         options.strip_ansi = config.filter.strip_ansi;
+        options.strip_tui_frames = config.filter.strip_tui_frames;
         options.max_output_lines = config.filter.max_lines;
         options.max_line_length = config.filter.max_line_length;
         options.noise_patterns = config.filter.noise_patterns.clone();

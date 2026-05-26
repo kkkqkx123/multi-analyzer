@@ -14,6 +14,13 @@ pub struct FilterConfig {
     pub max_line_length: usize,
     #[serde(default)]
     pub strip_ansi: bool,
+    /// Strip TUI frame/border lines (e.g. ╭──╮ │ ── ├──┤) from output
+    #[serde(default = "default_true")]
+    pub strip_tui_frames: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for FilterConfig {
@@ -25,6 +32,7 @@ impl Default for FilterConfig {
             max_lines: 0,
             max_line_length: 0,
             strip_ansi: true,
+            strip_tui_frames: true,
         }
     }
 }

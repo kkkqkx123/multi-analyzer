@@ -396,6 +396,7 @@ pub fn run_analysis_pipeline(
 ) -> StageResult<AnalysisResult> {
     let processor = crate::core::utils::OutputPostProcessor {
         strip_ansi: options.strip_ansi,
+        strip_tui_frames: options.strip_tui_frames,
         max_lines: if options.max_output_lines > 0 { Some(options.max_output_lines) } else { None },
         max_line_length: if options.max_line_length > 0 { Some(options.max_line_length) } else { None },
         noise_patterns: options.noise_patterns.clone(),

@@ -7,12 +7,12 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Path to the VS Dev Shell launcher script
-const VS_DEV_SHELL_PATH: &str = r"D:\softwares\Visual Studio\Common7\Tools\Launch-VsDevShell.ps1";
+/// Path to vcvarsall.bat for VS environment initialization
+const VS_VARSALL_PATH: &str = r"D:\softwares\Visual Studio\VC\Auxiliary\Build\vcvarsall.bat";
 
-/// Check if VS Dev Shell is available
+/// Check if VS Dev Shell is available (via vcvarsall.bat)
 pub fn is_vs_dev_shell_available() -> bool {
-    PathBuf::from(VS_DEV_SHELL_PATH).exists()
+    PathBuf::from(VS_VARSALL_PATH).exists()
 }
 
 /// Run a command with VS environment activated
@@ -21,28 +21,29 @@ pub fn run_with_vs_env(cmd: &str, args: &[&str], cwd: &PathBuf) -> Result<String
     if !is_vs_dev_shell_available() {
         return Err(format!(
             "VS Dev Shell not found at: {}. Please install Visual Studio or update the path.",
-            VS_DEV_SHELL_PATH
+            VS_VARSALL_PATH
         ));
     }
 
     println!("Activating VS Dev Shell environment...");
 
-    // Build the command to execute
+    // Build the command string (with proper quoting)
     let cmd_str = args.iter().fold(cmd.to_string(), |acc, arg| {
-        format!("{} {}", acc, if arg.contains(' ') { format!("'{}'", arg) } else { arg.to_string() })
+        format!("{} {}", acc, if arg.contains(' ') { format!("\"{}\"", arg) } else { arg.to_string() })
     });
 
-    // Execute through PowerShell with VS Dev Shell
-    let ps_script = format!(
-        "& '{}' -SkipAutomaticLocation; {}",
-        VS_DEV_SHELL_PATH,
+    // Execute via cmd.exe with vcvarsall.bat to set VS environment variables
+    // vcvarsall.bat sets environment in the cmd session, then runs the command
+    let cmd_script = format!(
+        "\"{}\" x64 && {}",
+        VS_VARSALL_PATH,
         cmd_str
     );
 
     println!("Executing in VS environment: {}", cmd_str);
 
-    let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-Command", &ps_script])
+    let output = Command::new("cmd.exe")
+        .args(["/D", "/S", "/C", &cmd_script])
         .current_dir(cwd)
         .output()
         .map_err(|e| format!("Failed to execute command in VS environment: {}", e))?;
@@ -86,12 +87,11 @@ pub fn check_msvc() -> bool {
     super::is_command_available("cl") || {
         // Try with VS environment
         if is_vs_dev_shell_available() {
-            // Quick test to see if cl is available after activating VS shell
-            let test_output = Command::new("powershell.exe")
+            // Quick test to see if cl is available after activating VS shell via vcvarsall.bat
+            let test_output = Command::new("cmd.exe")
                 .args([
-                    "-NoProfile",
-                    "-Command",
-                    &format!("& '{}' -SkipAutomaticLocation; Get-Command cl -ErrorAction SilentlyContinue", VS_DEV_SHELL_PATH)
+                    "/D", "/S", "/C",
+                    &format!("\"{}\" x64 >nul 2>&1 && where cl >nul 2>&1", VS_VARSALL_PATH)
                 ])
                 .output();
 

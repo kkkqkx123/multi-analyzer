@@ -3,8 +3,8 @@
 ** Copyright (c) 2022 Microsoft Corporation
 **********************************************************************
 main.cpp
-D:\项目\cli\analyzer\tests/data\fixtures\cpp-cmake-project\src/main.cpp(5): error C2065: “undefined_var”: 未声明的标识符
-D:\项目\cli\analyzer\tests/data\fixtures\cpp-cmake-project\src/main.cpp(10): error C3861: “add”: 找不到标识符
-用于 x86 的 Microsoft (R) C/C++ 优化编译器 19.43.34810 版
-版权所有(C) Microsoft Corporation。保留所有权利。
+D:\��Ŀ\cli\analyzer\tests/data\fixtures\cpp-cmake-project\src/main.cpp(5): error C2065: ��undefined_var��: δ�����ı�ʶ��
+D:\��Ŀ\cli\analyzer\tests/data\fixtures\cpp-cmake-project\src/main.cpp(10): error C3861: ��add��: �Ҳ�����ʶ��
+���� x86 �� Microsoft (R) C/C++ �Ż������� 19.43.34810 ��
+��Ȩ����(C) Microsoft Corporation����������Ȩ����
 
