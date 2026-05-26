@@ -100,6 +100,7 @@ pub struct AnalysisResult {
     pub issues_by_file: HashMap<String, Vec<Issue>>,
     /// Issues grouped by package (for monorepo/workspace support)
     pub issues_by_package: HashMap<String, Vec<Issue>>,
+    pub issues_by_code: HashMap<String, usize>,
     pub unique_patterns: HashSet<String>,
 }
 
@@ -121,6 +122,11 @@ impl AnalysisResult {
 
         // Statistics by level
         *self.issues_by_level.entry(issue.level.clone()).or_insert(0) += 1;
+
+        // Statistics by error code
+        if let Some(ref code) = issue.code {
+            *self.issues_by_code.entry(code.clone()).or_insert(0) += 1;
+        }
 
         // Statistics by type (using error codes or message patterns)
         let type_key = issue
@@ -175,6 +181,14 @@ impl AnalysisResult {
     /// Get total error count
     pub fn error_count(&self) -> usize {
         self.issues_by_level.get(&IssueLevel::Error).copied().unwrap_or(0)
+    }
+
+    /// Get top N most frequent error codes
+    pub fn top_error_codes(&self, n: usize) -> Vec<(String, usize)> {
+        let mut codes: Vec<_> = self.issues_by_code.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        codes.sort_by(|a, b| b.1.cmp(&a.1));
+        codes.truncate(n);
+        codes
     }
 
     /// Get total warning count
@@ -423,15 +437,37 @@ impl std::str::FromStr for SubCommand {
     }
 }
 
-/// Analyzing Options
+/// Verbosity level for report output
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Verbosity {
+    /// Minimal output: summary only, no details
+    Minimal,
+    /// Normal output: summary + top issues (default)
+    #[default]
+    Normal,
+    /// Verbose output: full details, no truncation
+    Verbose,
+}
+
+impl Verbosity {
+    pub fn is_minimal(&self) -> bool {
+        matches!(self, Verbosity::Minimal)
+    }
+
+    pub fn is_verbose(&self) -> bool {
+        matches!(self, Verbosity::Verbose)
+    }
+}
+
+/// Analyze options
 #[derive(Debug, Default, Clone)]
 pub struct AnalyzeOptions {
     pub subcommand: Option<SubCommand>,
     pub filter_warnings: bool,
     pub filter_paths: Vec<String>,
     pub output_file: Option<String>,
-    /// Show all issues without truncation
-    pub verbose: bool,
+    /// Verbosity level
+    pub verbosity: Verbosity,
     // C++ related options
     pub source_dir: Option<String>,
     pub build_dir: Option<String>,

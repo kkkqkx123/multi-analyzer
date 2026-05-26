@@ -60,7 +60,7 @@ fn default_analyze_options(subcommand: &str) -> analyzer::core::AnalyzeOptions {
         filter_warnings: false,
         filter_paths: vec![],
         output_file: None,
-        verbose: false,
+        verbosity: analyzer::core::Verbosity::Normal,
         source_dir: None,
         build_dir: None,
         cmake_generator: None,

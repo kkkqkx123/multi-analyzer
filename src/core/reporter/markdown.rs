@@ -115,6 +115,15 @@ impl MarkdownReporter {
 
         report.push_str(&format!("- **Categories**: {}\n", result.unique_patterns.len()));
         report.push_str(&format!("- **Files Affected**: {}", result.issues_by_file.len()));
+
+        // Add top error codes breakdown
+        let top_codes = result.top_error_codes(5);
+        if !top_codes.is_empty() {
+            report.push_str("\n\n### Top Error Codes\n\n");
+            for (code, count) in &top_codes {
+                report.push_str(&format!("- `{}`: {} occurrence(s)\n", code, count));
+            }
+        }
         
         // Add package count if we have package information
         let has_package_info = result.issues_by_package.keys().any(|k| k != "unknown");
@@ -124,6 +133,19 @@ impl MarkdownReporter {
         }
         report.push_str("\n\n");
 
+        // In minimal mode, skip details sections
+        if options.verbose.is_minimal() && result.total_issues > 0 {
+            // Still show top files in minimal mode
+            report.push_str("**Top Files:**\n\n");
+            let mut files: Vec<_> = result.issues_by_file.iter().collect();
+            files.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+            for (file_path, issues) in files.iter().take(5) {
+                report.push_str(&format!("- `{}`: {} issue(s)\n", file_path, issues.len()));
+            }
+            report.push('\n');
+            return Ok(report);
+        }
+
         // Statistics by type
         if !result.issues_by_type.is_empty() {
             report.push_str("## Breakdown by Category\n\n");
@@ -131,7 +153,7 @@ impl MarkdownReporter {
             types.sort_by(|a, b| b.1.cmp(a.1));
 
             // In verbose mode, show all types; otherwise limit to 20
-            let type_limit = if options.verbose { types.len() } else { 20 };
+            let type_limit = if options.verbose.is_verbose() { types.len() } else { 20 };
             for (issue_type, count) in types.iter().take(type_limit) {
                 report.push_str(&format!("- **{}**: {} occurrence(s)\n", issue_type, count));
             }
@@ -145,7 +167,7 @@ impl MarkdownReporter {
             let mut packages: Vec<_> = result.issues_by_package.iter().collect();
             packages.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
             
-            let package_limit = if options.verbose { packages.len() } else { 10 };
+            let package_limit = if options.verbose.is_verbose() { packages.len() } else { 10 };
             
             for (package_name, issues) in packages.iter().take(package_limit) {
                 if *package_name == "unknown" {
@@ -166,12 +188,12 @@ impl MarkdownReporter {
                 let mut file_list: Vec<_> = files.iter().collect();
                 file_list.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
                 
-                let file_limit = if options.verbose { file_list.len() } else { 5 };
+                let file_limit = if options.verbose.is_verbose() { file_list.len() } else { 5 };
                 
                 for (file_path, file_issues) in file_list.iter().take(file_limit) {
                     report.push_str(&format!("#### `{}` ({} item(s))\n\n", file_path, file_issues.len()));
                     
-                    let issue_limit = if options.verbose { file_issues.len() } else { 5 };
+                    let issue_limit = if options.verbose.is_verbose() { file_issues.len() } else { 5 };
                     for issue in file_issues.iter().take(issue_limit) {
                         let location = match (issue.location.line_number, issue.location.column_number) {
                             (Some(line), Some(col)) => format!("{}:{}", line, col),
@@ -193,13 +215,13 @@ impl MarkdownReporter {
                         ));
                     }
                     
-                    if !options.verbose && file_issues.len() > 5 {
+                    if !options.verbose.is_verbose() && file_issues.len() > 5 {
                         report.push_str(&format!("- ... and {} more\n", file_issues.len() - 5));
                     }
                     report.push('\n');
                 }
                 
-                if !options.verbose && file_list.len() > 5 {
+                if !options.verbose.is_verbose() && file_list.len() > 5 {
                     report.push_str(&format!(
                         "*... and {} more files in this package*\n\n",
                         file_list.len() - 5
@@ -207,7 +229,7 @@ impl MarkdownReporter {
                 }
             }
             
-            if !options.verbose && packages.len() > 10 {
+            if !options.verbose.is_verbose() && packages.len() > 10 {
                 report.push_str(&format!(
                     "*... and {} more packages (use --verbose to see all)*\n\n",
                     packages.len() - 10
@@ -222,12 +244,12 @@ impl MarkdownReporter {
             files.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
 
             // In verbose mode, show all files; otherwise limit to 20
-            let file_limit = if options.verbose { files.len() } else { 20 };
+            let file_limit = if options.verbose.is_verbose() { files.len() } else { 20 };
             for (file_path, issues) in files.iter().take(file_limit) {
                 report.push_str(&format!("### `{}` ({} item(s))\n\n", file_path, issues.len()));
 
                 // In verbose mode, show all issues; otherwise limit to 10
-                let issue_limit = if options.verbose { issues.len() } else { 10 };
+                let issue_limit = if options.verbose.is_verbose() { issues.len() } else { 10 };
                 for issue in issues.iter().take(issue_limit) {
                     let location = match (issue.location.line_number, issue.location.column_number) {
                         (Some(line), Some(col)) => format!("{}:{}", line, col),
@@ -249,7 +271,7 @@ impl MarkdownReporter {
                     ));
                 }
 
-                if !options.verbose && issues.len() > 10 {
+                if !options.verbose.is_verbose() && issues.len() > 10 {
                     report.push_str(&format!("- ... and {} more\n", issues.len() - 10));
                 }
 
@@ -257,7 +279,7 @@ impl MarkdownReporter {
             }
 
             // Show message if files were truncated
-            if !options.verbose && files.len() > 20 {
+            if !options.verbose.is_verbose() && files.len() > 20 {
                 report.push_str(&format!(
                     "*... and {} more files (use --verbose to see all)*\n\n",
                     files.len() - 20

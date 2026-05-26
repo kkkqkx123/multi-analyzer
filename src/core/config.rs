@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::core::utils::OutputPostProcessor;
+
 /// Top-level configuration
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Config {
@@ -27,6 +29,13 @@ pub struct ReportConfig {
     /// Verbose output (show all issues without truncation)
     #[serde(default)]
     pub verbose: bool,
+    /// Verbosity level: "minimal", "normal", "verbose"
+    #[serde(default = "default_verbosity")]
+    pub verbosity: String,
+}
+
+fn default_verbosity() -> String {
+    "normal".to_string()
 }
 
 fn default_report_format() -> String {
@@ -38,6 +47,7 @@ impl Default for ReportConfig {
         Self {
             format: default_report_format(),
             verbose: false,
+            verbosity: default_verbosity(),
         }
     }
 }
@@ -52,12 +62,44 @@ pub struct CommandConfig {
     pub tech_stacks: Vec<String>,
 }
 
-/// Filter configuration
+/// Filter configuration for output compression
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct FilterConfig {
     /// File path patterns to ignore during analysis
     #[serde(default)]
     pub ignore_paths: Vec<String>,
+    /// Regex patterns for noise lines to strip from output
+    #[serde(default)]
+    pub noise_patterns: Vec<String>,
+    /// Regex patterns for lines to keep (opposite of noise)
+    #[serde(default)]
+    pub keep_patterns: Vec<String>,
+    /// Maximum number of lines in output (0 = no limit)
+    #[serde(default)]
+    pub max_lines: usize,
+    /// Maximum characters per line (0 = no limit)
+    #[serde(default)]
+    pub max_line_length: usize,
+    /// Whether to strip ANSI escape codes
+    #[serde(default)]
+    pub strip_ansi: bool,
+}
+
+impl FilterConfig {
+    /// Build an OutputPostProcessor from this filter configuration
+    pub fn to_post_processor(&self) -> OutputPostProcessor {
+        let mut processor = OutputPostProcessor::new()
+            .with_strip_ansi(self.strip_ansi)
+            .with_noise_patterns(self.noise_patterns.clone())
+            .with_keep_patterns(self.keep_patterns.clone());
+        if self.max_lines > 0 {
+            processor = processor.with_max_lines(self.max_lines);
+        }
+        if self.max_line_length > 0 {
+            processor = processor.with_max_line_length(self.max_line_length);
+        }
+        processor
+    }
 }
 
 impl Config {

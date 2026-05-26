@@ -15,7 +15,7 @@ mod plugins;
 
 use core::{
     AnalysisResult, AnalyzeOptions, ReportFormat, ReporterFactory, SubCommand, TechStack,
-    TestAnalyzer, TestOptions,
+    TestAnalyzer, TestOptions, Verbosity,
 };
 
 fn main() {
@@ -90,7 +90,10 @@ fn parse_arguments(args: &[String]) -> (TechStack, AnalyzeOptions) {
                 options.filter_warnings = true;
             }
             "--verbose" => {
-                options.verbose = true;
+                options.verbosity = Verbosity::Verbose;
+            }
+            "--quiet" | "-q" => {
+                options.verbosity = Verbosity::Minimal;
             }
             "--filter-paths" => {
                 if i + 1 < args.len() {
@@ -216,9 +219,15 @@ fn parse_arguments(args: &[String]) -> (TechStack, AnalyzeOptions) {
 }
 
 /// Convert AnalyzeOptions to ReportOptions
-fn to_report_options(options: &AnalyzeOptions) -> core::reporter::ReportOptions {
+fn to_report_options(options: &AnalyzeOptions, tech_stack: &TechStack, subcommand: Option<&SubCommand>) -> core::reporter::ReportOptions {
+    let tech_stack_name = match subcommand {
+        Some(cmd) => format!("{} {}", tech_stack.as_str(), cmd.as_str()),
+        None => tech_stack.as_str().to_string(),
+    };
     core::reporter::ReportOptions {
-        verbose: options.verbose,
+        verbose: options.verbosity,
+        success_short_circuit: true,
+        tech_stack: Some(tech_stack_name),
     }
 }
 
@@ -252,7 +261,7 @@ fn run_analysis(
 
             // Generating reports
             let reporter = ReporterFactory::create(ReportFormat::Markdown);
-            let report_options = to_report_options(options);
+            let report_options = to_report_options(options, &analyzer.tech_stack(), options.subcommand.as_ref());
             let report = match reporter.generate_with_options(&result, report_options) {
                 Ok(r) => r,
                 Err(e) => {
@@ -319,7 +328,7 @@ fn run_test_analysis(
 
             // Generate test report
             let reporter = ReporterFactory::create(ReportFormat::Markdown);
-            let report_options = to_report_options(options);
+            let report_options = to_report_options(options, &analyzer.tech_stack(), options.subcommand.as_ref());
             let report = match reporter.generate_test_report_with_options(&test_output.into(), report_options) {
                 Ok(r) => r,
                 Err(e) => {
@@ -376,6 +385,7 @@ fn show_help() {
     println!("  --filter-warnings       Filter out warnings, show only errors");
     println!("  --filter-paths <paths>  Filter by file paths (comma-separated)");
     println!("  --verbose               Show all issues without truncation");
+    println!("  -q, --quiet              Minimal output (summary only)");
     println!("  -o, --output <file>     Output file (default: analysis_report.md)");
     println!();
     println!("Examples:");

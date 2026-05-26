@@ -2,7 +2,7 @@
 //! Support for multiple output formats (Markdown, JSON, HTML)
 
 use std::path::Path;
-use super::types::{AnalysisResult, ReportFormat, TestAnalysisResult};
+use super::types::{AnalysisResult, ReportFormat, TestAnalysisResult, Verbosity};
 
 mod markdown;
 mod json;
@@ -35,16 +35,37 @@ impl From<std::io::Error> for ReporterError {
 }
 
 /// Report generation options
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct ReportOptions {
     /// Show all issues without truncation
-    pub verbose: bool,
+    pub verbose: Verbosity,
+    /// Enable success short-circuit: when no issues found, output a single-line confirmation
+    pub success_short_circuit: bool,
+    /// Tech stack name for short-circuit message (e.g. "cargo check")
+    pub tech_stack: Option<String>,
 }
 
 impl ReportOptions {
     /// Create new report options with verbose mode
     pub fn verbose() -> Self {
-        Self { verbose: true }
+        Self { verbose: Verbosity::Verbose, success_short_circuit: false, tech_stack: None }
+    }
+
+    /// Create new report options with success short-circuit enabled
+    pub fn with_short_circuit(mut self, tech_stack: impl Into<String>) -> Self {
+        self.success_short_circuit = true;
+        self.tech_stack = Some(tech_stack.into());
+        self
+    }
+
+    /// Get the short-circuit message when no issues found
+    pub fn short_circuit_message(&self) -> Option<String> {
+        if self.success_short_circuit {
+            let name = self.tech_stack.as_deref().unwrap_or("analysis");
+            Some(format!("{}: no issues found", name))
+        } else {
+            None
+        }
     }
 }
 
@@ -59,6 +80,13 @@ pub trait Reporter: Send + Sync {
         result: &AnalysisResult,
         options: ReportOptions,
     ) -> Result<String, ReporterError> {
+        // Success short-circuit: if no issues found and short-circuit is enabled,
+        // output a single-line confirmation instead of full report
+        if options.success_short_circuit && result.total_issues == 0 {
+            if let Some(msg) = options.short_circuit_message() {
+                return Ok(msg);
+            }
+        }
         // Default implementation ignores options for backward compatibility
         let _ = options;
         self.generate(result)

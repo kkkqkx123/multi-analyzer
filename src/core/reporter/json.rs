@@ -57,6 +57,17 @@ impl Reporter for JsonReporter {
             json.push_str("  },\n");
         }
 
+        // Top error codes
+        let top_codes = result.top_error_codes(5);
+        if !top_codes.is_empty() {
+            json.push_str("  \"top_error_codes\": [\n");
+            for (i, (code, count)) in top_codes.iter().enumerate() {
+                let comma = if i < top_codes.len() - 1 { "," } else { "" };
+                json.push_str(&format!("    {{\"code\": \"{}\", \"count\": {}}}{}\n", code.replace('"', "\\\""), count, comma));
+            }
+            json.push_str("  ],\n");
+        }
+
         // Detailed list of questions
         json.push_str("  \"items\": [\n");
         let all_issues: Vec<_> = result.issues_by_file.values().flatten().collect();

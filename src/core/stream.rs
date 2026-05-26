@@ -3,6 +3,7 @@
 
 use crate::core::parser::ParseResult;
 use crate::core::types::{AnalysisResult, Issue};
+use crate::core::utils::OutputPostProcessor;
 
 /// Pipeline error with degradation support
 #[derive(Debug)]
@@ -320,6 +321,35 @@ impl PipelineStage<String, String> for LineFilter {
     }
 }
 
+/// Post-processing stage: apply ANSI stripping, noise filtering, line truncation.
+pub struct PostProcessStage {
+    processor: OutputPostProcessor,
+}
+
+impl PostProcessStage {
+    pub fn new(processor: OutputPostProcessor) -> Self {
+        Self { processor }
+    }
+
+    /// Create a default post-processor with sensible defaults for build output.
+    pub fn with_defaults() -> Self {
+        Self {
+            processor: OutputPostProcessor::new(),
+        }
+    }
+}
+
+impl PipelineStage<String, String> for PostProcessStage {
+    fn process(&mut self, input: String) -> StageResult<String> {
+        let result = self.processor.process(&input);
+        StageResult::Complete(result)
+    }
+
+    fn name(&self) -> &str {
+        "post_process"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,5 +415,16 @@ mod tests {
         let degraded: StageResult<Vec<i32>> = StageResult::Degraded(vec![1, 2], vec!["partial".to_string()]);
         let data = degraded.data();
         assert_eq!(data, Some(vec![1, 2]));
+    }
+
+    #[test]
+    fn test_post_process_stage() {
+        let processor = OutputPostProcessor::new()
+            .with_noise_patterns(vec!["^debug:".to_string()]);
+        let mut stage = PostProcessStage::new(processor);
+        let result = stage.process("debug: verbose\nerror: failed".to_string());
+        let output = result.data().unwrap();
+        assert!(!output.contains("debug:"));
+        assert!(output.contains("error:"));
     }
 }
