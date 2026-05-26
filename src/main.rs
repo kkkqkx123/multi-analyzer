@@ -230,6 +230,17 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
         std::process::exit(1);
     });
 
+    // Look up command aliases in config.commands
+    if !config.commands.is_empty() {
+        if let Some(cmd_config) = config.commands.get(&command_str) {
+            // Check if the command is restricted to specific tech stacks
+            if cmd_config.tech_stacks.is_empty() || cmd_config.tech_stacks.contains(&tech_stack_str) {
+                println!("Using configured command '{}' for alias '{}'", cmd_config.exec, command_str);
+                command_str = cmd_config.exec.clone();
+            }
+        }
+    }
+
     options.subcommand = Some(SubCommand::new(command_str));
     (tech_stack, options)
 }

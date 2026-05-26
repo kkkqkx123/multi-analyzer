@@ -13,21 +13,6 @@ impl ConfigLoader {
         Self { config_path: None }
     }
 
-    #[allow(dead_code)]
-    pub fn with_path(mut self, path: impl Into<std::path::PathBuf>) -> Self {
-        self.config_path = Some(path.into());
-        self
-    }
-
-    /// Load global configuration only (no project overrides)
-    #[allow(dead_code)]
-    pub fn load_global() -> AppConfig {
-        let loader = ConfigLoader::new();
-        let mut config = loader.load_internal();
-        env_loader::apply_env_vars(&mut config);
-        config
-    }
-
     /// Load project-level configuration from project root directory
     pub fn load_project(project_root: &Path) -> ProjectAppConfig {
         ProjectConfigPaths::find_project_config(project_root)
@@ -82,12 +67,6 @@ impl ConfigLoader {
         AppConfig::default()
     }
 
-    /// Generate a default configuration file content as TOML string
-    #[allow(dead_code)]
-    pub fn generate_default_config() -> Result<String, toml::ser::Error> {
-        let config = AppConfig::default();
-        toml::to_string_pretty(&config)
-    }
 }
 
 impl Default for ConfigLoader {

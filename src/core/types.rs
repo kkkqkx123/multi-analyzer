@@ -506,6 +506,11 @@ pub struct AnalyzeOptions {
     pub subcommand: Option<SubCommand>,
     pub filter_warnings: bool,
     pub filter_paths: Vec<String>,
+    pub noise_patterns: Vec<String>,
+    pub keep_patterns: Vec<String>,
+    pub max_output_lines: usize,
+    pub max_line_length: usize,
+    pub strip_ansi: bool,
     pub output_file: Option<String>,
     /// Verbosity level
     pub verbosity: Verbosity,
@@ -581,6 +586,12 @@ impl AnalyzeOptions {
             "verbose" => Verbosity::Verbose,
             _ => Verbosity::Normal,
         };
+
+        options.strip_ansi = config.filter.strip_ansi;
+        options.max_output_lines = config.filter.max_lines;
+        options.max_line_length = config.filter.max_line_length;
+        options.noise_patterns = config.filter.noise_patterns.clone();
+        options.keep_patterns = config.filter.keep_patterns.clone();
 
         options
     }

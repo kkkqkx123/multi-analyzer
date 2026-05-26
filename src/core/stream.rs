@@ -394,7 +394,15 @@ pub fn run_analysis_pipeline(
     output: &str,
     options: &AnalyzeOptions,
 ) -> StageResult<AnalysisResult> {
-    let result = parser.parse(output);
+    let processor = crate::core::utils::OutputPostProcessor {
+        strip_ansi: options.strip_ansi,
+        max_lines: if options.max_output_lines > 0 { Some(options.max_output_lines) } else { None },
+        max_line_length: if options.max_line_length > 0 { Some(options.max_line_length) } else { None },
+        noise_patterns: options.noise_patterns.clone(),
+        keep_patterns: options.keep_patterns.clone(),
+    };
+    let processed_output = processor.process(output);
+    let result = parser.parse(&processed_output);
     match result {
         ParseResult::Full(issues) | ParseResult::Degraded(issues, _) => {
             let result = AnalysisResult::from_issues(issues);
