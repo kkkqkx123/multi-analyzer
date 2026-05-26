@@ -24,7 +24,7 @@ web:lint:  ELIFECYCLE  Command failed with exit code 1.
 
  Tasks:    0 successful, 1 total
 Cached:    0 cached, 1 total
-  Time:    5.096s 
+  Time:    4.789s 
 Failed:    web#lint
 
  WARNING  No locally installed `turbo` found in your repository. Using globally installed version (2.8.3), which can cause unexpected behavior.

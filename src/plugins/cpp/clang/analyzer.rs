@@ -62,34 +62,7 @@ impl ClangAnalyzer {
     }
 
     fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        if !options.filter_warnings && options.filter_paths.is_empty() {
-            return result;
-        }
-
-        let mut filtered = AnalysisResult::new();
-
-        for (file_path, issues) in result.issues_by_file {
-            if !options.filter_paths.is_empty() {
-                let matches = options
-                    .filter_paths
-                    .iter()
-                    .any(|filter| file_path.contains(filter));
-                if !matches {
-                    continue;
-                }
-            }
-
-            for issue in issues {
-                if options.filter_warnings && matches!(issue.level, crate::core::IssueLevel::Warning)
-                {
-                    continue;
-                }
-
-                filtered.add_issue(issue);
-            }
-        }
-
-        filtered
+        result.filter_by_options(options)
     }
 }
 

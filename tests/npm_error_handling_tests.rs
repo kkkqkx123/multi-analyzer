@@ -31,6 +31,7 @@ fn create_broken_lint_project() -> PathBuf {
 }
 
 /// Create a temporary package.json with a lint script that fails but has parseable output
+#[allow(dead_code)]
 fn create_lint_with_errors_project() -> PathBuf {
     let temp_dir = std::env::temp_dir().join("analyzer_test_lint_errors");
     fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");

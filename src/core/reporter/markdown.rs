@@ -83,6 +83,14 @@ impl MarkdownReporter {
         result: &AnalysisResult,
         options: ReportOptions,
     ) -> Result<String, ReporterError> {
+        // Success short-circuit: if no issues found and short-circuit is enabled,
+        // output a single-line confirmation instead of full markdown report
+        if options.success_short_circuit && result.total_issues == 0 {
+            if let Some(msg) = options.short_circuit_message() {
+                return Ok(msg);
+            }
+        }
+
         let mut report = String::new();
 
         // Detect the report type and set the appropriate title

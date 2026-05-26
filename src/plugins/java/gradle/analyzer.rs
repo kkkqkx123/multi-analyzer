@@ -22,47 +22,11 @@ impl GradleAnalyzer {
     /// Creating a command builder
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
         let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("compileJava --quiet");
-
-        // Build command directly from the command string
-        let mut builder = CommandBuilder::new("gradle");
-        
-        // Split the command string and add as arguments
-        for arg in command_str.split_whitespace() {
-            builder = builder.arg(arg);
-        }
-
-        builder
+        CommandBuilder::from_exec_string(&format!("gradle {}", command_str))
     }
 
     fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        if !options.filter_warnings && options.filter_paths.is_empty() {
-            return result;
-        }
-
-        let mut filtered = AnalysisResult::new();
-
-        for (file_path, issues) in result.issues_by_file {
-            if !options.filter_paths.is_empty() {
-                let matches = options
-                    .filter_paths
-                    .iter()
-                    .any(|filter| file_path.contains(filter));
-                if !matches {
-                    continue;
-                }
-            }
-
-            for issue in issues {
-                if options.filter_warnings && matches!(issue.level, crate::core::IssueLevel::Warning)
-                {
-                    continue;
-                }
-
-                filtered.add_issue(issue);
-            }
-        }
-
-        filtered
+        result.filter_by_options(options)
     }
 }
 

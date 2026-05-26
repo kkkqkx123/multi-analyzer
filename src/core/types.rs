@@ -195,6 +195,41 @@ impl AnalysisResult {
     pub fn warning_count(&self) -> usize {
         self.issues_by_level.get(&IssueLevel::Warning).copied().unwrap_or(0)
     }
+
+    /// Filter self based on AnalyzeOptions (shared utility for all plugin analyzers).
+    ///
+    /// Applies `filter_warnings` and `filter_paths` to produce a filtered result.
+    /// This replaces the identical `filter_issues()` methods previously duplicated
+    /// across all 10 plugin analyzers.
+    pub fn filter_by_options(self, options: &AnalyzeOptions) -> Self {
+        if !options.filter_warnings && options.filter_paths.is_empty() {
+            return self;
+        }
+
+        let mut filtered = AnalysisResult::new();
+
+        for (file_path, issues) in self.issues_by_file {
+            if !options.filter_paths.is_empty() {
+                let matches = options
+                    .filter_paths
+                    .iter()
+                    .any(|filter| file_path.contains(filter));
+                if !matches {
+                    continue;
+                }
+            }
+
+            for issue in issues {
+                if options.filter_warnings && matches!(issue.level, IssueLevel::Warning) {
+                    continue;
+                }
+
+                filtered.add_issue(issue);
+            }
+        }
+
+        filtered
+    }
 }
 
 /// Test Result Status
@@ -249,7 +284,11 @@ pub struct TestSummary {
     pub passed: usize,
     pub failed: usize,
     pub ignored: usize,
+    /// Number of measured tests
+    #[allow(dead_code)]
     pub measured: usize,
+    /// Number of filtered tests
+    #[allow(dead_code)]
     pub filtered: usize,
     /// Execution time in seconds (available for external use)
     #[allow(dead_code)]
@@ -299,11 +338,13 @@ impl TestAnalysisResult {
     }
 
     /// Check if all tests passed (no failures and no compile issues)
+    #[allow(dead_code)]
     pub fn all_passed(&self) -> bool {
         self.failed_tests.is_empty() && self.compile_result.total_issues == 0
     }
 
     /// Get total test count
+    #[allow(dead_code)]
     pub fn total_tests(&self) -> usize {
         self.passed_tests.len() + self.failed_tests.len() + self.ignored_tests.len()
     }
@@ -469,9 +510,13 @@ pub struct AnalyzeOptions {
     /// Verbosity level
     pub verbosity: Verbosity,
     // C++ related options
+    #[allow(dead_code)]
     pub source_dir: Option<String>,
+    #[allow(dead_code)]
     pub build_dir: Option<String>,
+    #[allow(dead_code)]
     pub cmake_generator: Option<String>,
+    #[allow(dead_code)]
     pub target: Option<String>,
     pub target_files: Vec<String>,
     pub include_paths: Vec<String>,

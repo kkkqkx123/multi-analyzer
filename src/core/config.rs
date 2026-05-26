@@ -1,6 +1,8 @@
 //! TOML-based configuration system
 //! Provides customizable behavior for reports, commands, and filters
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

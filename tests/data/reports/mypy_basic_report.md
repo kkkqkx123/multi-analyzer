@@ -12,14 +12,19 @@
 
 ## Issue Details (Grouped by File)
 
-### setup.py
+### src\utils.py
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 1 | 1 | Error | Library stubs not installed for "setuptools"  [import-untyped] |
-| 1 | 1 | Info | Hint: "python3 -m pip install types-setuptools" |
-| 1 | 1 | Info | (or run "mypy --install-types" to install all missing stub packages) |
-| 1 | 1 | Info | See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports |
+| 9 | 5 | Error | Returning Any from function declared to return "dict[Any, Any]"  [no-any-return] |
+| 24 | 1 | Error | Function is missing a type annotation  [no-untyped-def] |
+| 53 | 5 | Error | Function is missing a type annotation for one or more arguments  [no-untyped-def] |
+| 54 | 9 | Error | Returning Any from function declared to return "str"  [no-any-return] |
+| 70 | 5 | Error | Function is missing a type annotation for one or more arguments  [no-untyped-def] |
+| 75 | 1 | Error | Function is missing a return type annotation  [no-untyped-def] |
+| 79 | 20 | Error | Argument 1 to "append" of "list" has incompatible type "str"; expected "int"  [arg-type] |
+| 83 | 14 | Error | Unsupported operand types for + ("None" and "int")  [operator] |
+| 83 | 14 | Info | Left operand is of type "Optional[int]" |
 
 ### src\main.py
 
@@ -37,19 +42,14 @@
 | 96 | 14 | Error | Incompatible types in assignment (expression has type "int", variable has type "str")  [assignment] |
 | 99 | 11 | Error | Name "undefined_variable" is not defined  [name-defined] |
 
-### src\utils.py
+### setup.py
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 9 | 5 | Error | Returning Any from function declared to return "dict[Any, Any]"  [no-any-return] |
-| 24 | 1 | Error | Function is missing a type annotation  [no-untyped-def] |
-| 53 | 5 | Error | Function is missing a type annotation for one or more arguments  [no-untyped-def] |
-| 54 | 9 | Error | Returning Any from function declared to return "str"  [no-any-return] |
-| 70 | 5 | Error | Function is missing a type annotation for one or more arguments  [no-untyped-def] |
-| 75 | 1 | Error | Function is missing a return type annotation  [no-untyped-def] |
-| 79 | 20 | Error | Argument 1 to "append" of "list" has incompatible type "str"; expected "int"  [arg-type] |
-| 83 | 14 | Error | Unsupported operand types for + ("None" and "int")  [operator] |
-| 83 | 14 | Info | Left operand is of type "Optional[int]" |
+| 1 | 1 | Error | Library stubs not installed for "setuptools"  [import-untyped] |
+| 1 | 1 | Info | Hint: "python3 -m pip install types-setuptools" |
+| 1 | 1 | Info | (or run "mypy --install-types" to install all missing stub packages) |
+| 1 | 1 | Info | See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports |
 
 ## Raw Output
 

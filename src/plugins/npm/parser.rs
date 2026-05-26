@@ -271,6 +271,7 @@ impl NpmParser {
     /// - "web:lint:    4:7   error    ..." -> ("web", "    4:7   error    ...")
     /// - "@scope/pkg#lint:    4:7   error    ..." -> ("@scope/pkg", "    4:7   error    ...")
     /// - "┌─ @scope/pkg#lint > ..." (TUI border lines) -> (None, "")
+    #[allow(dead_code)]
     pub fn strip_turbo_prefixes(&self, output: &str) -> String {
         // First, strip ANSI codes
         let clean_output = self.strip_ansi_codes(output);
@@ -1276,7 +1277,7 @@ D:\project\packages\storage\src\json\base-json-storage.ts
         
         // Test file path (should not extract package)
         let line = "src/index.ts:   4:7   error  message";
-        let (package, content) = parser.extract_package_and_content(line);
+        let (package, _content) = parser.extract_package_and_content(line);
         assert_eq!(package, None);
     }
 

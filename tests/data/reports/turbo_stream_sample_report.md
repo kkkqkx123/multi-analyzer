@@ -12,18 +12,18 @@
 
 ## Issue Details (Grouped by File)
 
+### unknown
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| - | - | Error | run failed: command  exited (1) |
+
 ### D:\project\apps\web\src\index.ts
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 4 | 7 | Error | 'unusedVariable' is assigned a value but never used |
 | 7 | 24 | Error | 'unusedParam' is defined but never used |
-
-### unknown
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| - | - | Error | run failed: command  exited (1) |
 
 ## Raw Output
 

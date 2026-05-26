@@ -3,6 +3,8 @@
 //! Extracted from individual parser modules to avoid duplication.
 //! Inspired by RTK's utility patterns.
 
+#![allow(dead_code)]
+
 use regex::Regex;
 use std::path::Path;
 use std::sync::OnceLock;

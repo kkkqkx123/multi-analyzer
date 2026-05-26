@@ -47,11 +47,13 @@ pub struct ReportOptions {
 
 impl ReportOptions {
     /// Create new report options with verbose mode
+    #[allow(dead_code)]
     pub fn verbose() -> Self {
         Self { verbose: Verbosity::Verbose, success_short_circuit: false, tech_stack: None }
     }
 
     /// Create new report options with success short-circuit enabled
+    #[allow(dead_code)]
     pub fn with_short_circuit(mut self, tech_stack: impl Into<String>) -> Self {
         self.success_short_circuit = true;
         self.tech_stack = Some(tech_stack.into());
@@ -92,7 +94,8 @@ pub trait Reporter: Send + Sync {
         self.generate(result)
     }
 
-    /// Generate test report content
+    /// Generate a test-specific report
+    #[allow(dead_code)]
     fn generate_test_report(&self, result: &TestAnalysisResult) -> Result<String, ReporterError> {
         // Default implementation: call General Report Generation
         self.generate(&result.compile_result)

@@ -12,11 +12,11 @@
 
 ## Issue Details (Grouped by File)
 
-### pkg/utils/math.go
+### internal/config/config.go
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 20 | 16 | Error | undefined: os |
+| 15 | 15 | Warning | os.Setenv call has possible formatting directive %v |
 
 ### ./main.go
 
@@ -27,11 +27,11 @@
 | 21 | 10 | Warning | os.Setenv call has possible formatting directive %s |
 | 23 | 2 | Error | cfg declared but not used |
 
-### internal/config/config.go
+### pkg/utils/math.go
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 15 | 15 | Warning | os.Setenv call has possible formatting directive %v |
+| 20 | 16 | Error | undefined: os |
 
 ## Raw Output
 

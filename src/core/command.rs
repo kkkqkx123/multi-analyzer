@@ -1,6 +1,8 @@
 //! command execution tool
 //! Provides unified command construction and execution functions and supports cross-platform command lookup
 
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, ExitStatus};
 use std::sync::mpsc;

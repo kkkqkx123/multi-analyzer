@@ -23,16 +23,7 @@ impl PytestAnalyzer {
     /// Create command builder for pytest
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
         let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("-v --color=no --tb=short");
-
-        // Build command directly from the command string
-        let mut builder = CommandBuilder::new("pytest");
-        
-        // Split the command string and add as arguments
-        for arg in command_str.split_whitespace() {
-            builder = builder.arg(arg);
-        }
-
-        builder
+        CommandBuilder::from_exec_string(&format!("pytest {}", command_str))
     }
 
     /// Create test command builder
@@ -69,34 +60,7 @@ impl PytestAnalyzer {
     }
 
     fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        if !options.filter_warnings && options.filter_paths.is_empty() {
-            return result;
-        }
-
-        let mut filtered = AnalysisResult::new();
-
-        for (file_path, issues) in result.issues_by_file {
-            if !options.filter_paths.is_empty() {
-                let matches = options
-                    .filter_paths
-                    .iter()
-                    .any(|filter| file_path.contains(filter));
-                if !matches {
-                    continue;
-                }
-            }
-
-            for issue in issues {
-                if options.filter_warnings && matches!(issue.level, crate::core::IssueLevel::Warning)
-                {
-                    continue;
-                }
-
-                filtered.add_issue(issue);
-            }
-        }
-
-        filtered
+        result.filter_by_options(options)
     }
 }
 

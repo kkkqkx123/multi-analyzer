@@ -2,7 +2,7 @@
 //! Test that npm commands are correctly converted to pnpm/yarn format
 
 use analyzer::plugins::npm::NpmAnalyzer;
-use analyzer::core::{BuildAnalyzer, AnalyzeOptions, SubCommand};
+use analyzer::core::BuildAnalyzer;
 
 /// Helper to extract the program from a CommandBuilder
 /// We need to test the internal logic, so we'll test through the analyzer

@@ -1,6 +1,8 @@
 //! Processing pipeline for command output analysis
 //! Provides a stage-based pipeline abstraction for chaining analysis steps
 
+#![allow(dead_code)]
+
 use crate::core::parser::ParseResult;
 use crate::core::types::{AnalysisResult, Issue};
 use crate::core::utils::OutputPostProcessor;
@@ -104,15 +106,11 @@ impl<P: crate::core::parser::OutputParser> PipelineStage<String, Vec<Issue>> for
 }
 
 /// Filtering stage: filter issues by criteria
-pub struct FilterStage {
-    warnings: Vec<String>,
-}
+pub struct FilterStage;
 
 impl FilterStage {
     pub fn new() -> Self {
-        Self {
-            warnings: Vec::new(),
-        }
+        Self
     }
 
     /// Filter issues by file path patterns (keep only matching paths)
