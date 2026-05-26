@@ -523,6 +523,8 @@ pub struct AnalyzeOptions {
     pub defines: Vec<String>,
     pub cpp_standard: Option<String>,
     pub json_output: bool,
+    /// Report output format: markdown, json, or html
+    pub report_format: ReportFormat,
 
     // === Cargo Workspace Support ===
     /// --workspace
@@ -570,6 +572,17 @@ pub enum ReportFormat {
     Markdown,
     Json,
     Html,
+}
+
+impl ReportFormat {
+    /// Return the file extension for this format (without dot)
+    pub fn extension(&self) -> &'static str {
+        match self {
+            ReportFormat::Markdown => "md",
+            ReportFormat::Json => "json",
+            ReportFormat::Html => "html",
+        }
+    }
 }
 
 impl std::str::FromStr for ReportFormat {

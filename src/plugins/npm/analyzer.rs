@@ -3,8 +3,7 @@
 
 use crate::core::{
     AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
-    TestOutputParser,
+    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::NpmParser;
@@ -64,33 +63,6 @@ impl NpmAnalyzer {
     pub fn yarn() -> Self {
         Self::new(PackageManager::Yarn)
     }
-
-    fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        result.filter_by_options(options)
-    }
-
-    /// Creating a test command
-    fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
-        let mut builder = CommandBuilder::new(self.package_manager.as_str());
-        
-        // Default to "test" if no command specified
-        let command_str = if options.command.is_empty() {
-            "test"
-        } else {
-            &options.command
-        };
-        
-        for arg in command_str.split_whitespace() {
-            builder = builder.arg(arg);
-        }
-
-        // Adding test filters (test name mode)
-        if let Some(ref filter) = options.filter {
-            builder = builder.arg(filter);
-        }
-
-        builder
-    }
 }
 
 impl Default for NpmAnalyzer {
@@ -113,15 +85,22 @@ impl BuildAnalyzer for NpmAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
+        use crate::core::run_analysis_pipeline;
+        use crate::core::stream::StageResult;
+
         let builder = self.package_manager.build_command(options);
         let output = builder.execute()?;
 
         println!("Parsing output...");
-        let issues = self.parser.parse(&output).data_or_default_owned();
-        println!("Found {} issues", issues.len());
-
-        let result = AnalysisResult::from_issues(issues);
-        Ok(self.filter_issues(result, options))
+        match run_analysis_pipeline(&self.parser, &output, options) {
+            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
+                println!("Found {} issues", result.total_issues);
+                Ok(result)
+            }
+            StageResult::Failed(warnings) => {
+                Err(AnalyzerError::ParseError(warnings.join("; ")))
+            }
+        }
     }
 
     fn parser(&self) -> &dyn OutputParser {
@@ -131,6 +110,10 @@ impl BuildAnalyzer for NpmAnalyzer {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+
+    fn as_test_analyzer(&self) -> Option<&dyn TestAnalyzer> {
+        Some(self)
+    }
 }
 
 impl TestAnalyzer for NpmAnalyzer {
@@ -138,19 +121,26 @@ impl TestAnalyzer for NpmAnalyzer {
         true
     }
 
-    fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError> {
-        let builder = self.create_test_command(options);
-        let output = builder
-            .execute()
-            .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;
+    fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
+        let mut builder = CommandBuilder::new(self.package_manager.as_str());
+        
+        // Default to "test" if no command specified
+        let command_str = if options.command.is_empty() {
+            "test"
+        } else {
+            &options.command
+        };
+        
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
+        }
 
-        // Parse test output
-        let parsed = self
-            .test_parser()
-            .ok_or(TestAnalyzerError::NotSupported)?
-            .parse_test_output(&output);
+        // Adding test filters (test name mode)
+        if let Some(ref filter) = options.filter {
+            builder = builder.arg(filter);
+        }
 
-        Ok(parsed)
+        builder
     }
 
     fn test_parser(&self) -> Option<&dyn TestOutputParser> {

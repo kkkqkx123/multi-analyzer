@@ -1,17 +1,3 @@
-setup.py:1:1: error: Library stubs not installed for "setuptools"  [import-untyped]
-setup.py:1:1: note: Hint: "python3 -m pip install types-setuptools"
-setup.py:1:1: note: (or run "mypy --install-types" to install all missing stub packages)
-src\main.py:14:18: error: Unsupported operand types for + ("int" and "str")  [operator]
-src\main.py:26:1: error: Function is missing a type annotation  [no-untyped-def]
-src\main.py:40:16: error: Argument 1 to "len" has incompatible type "Optional[str]"; expected "Sized"  [arg-type]
-src\main.py:54:5: error: Function is missing a type annotation  [no-untyped-def]
-src\main.py:62:5: error: Function is missing a return type annotation  [no-untyped-def]
-src\main.py:62:5: note: Use "-> None" if function does not return a value
-src\main.py:90:1: error: Function is missing a return type annotation  [no-untyped-def]
-src\main.py:90:1: note: Use "-> None" if function does not return a value
-src\main.py:93:17: error: Argument 1 to "add_numbers" has incompatible type "str"; expected "int"  [arg-type]
-src\main.py:96:14: error: Incompatible types in assignment (expression has type "int", variable has type "str")  [assignment]
-src\main.py:99:11: error: Name "undefined_variable" is not defined  [name-defined]
 src\utils.py:7:30: error: Missing type parameters for generic type "dict"  [type-arg]
 src\utils.py:9:5: error: Returning Any from function declared to return "dict[Any, Any]"  [no-any-return]
 src\utils.py:41:1: error: Function is missing a type annotation  [no-untyped-def]
@@ -50,4 +36,19 @@ tests\test_example.py:44:1: note: Use "-> None" if function does not return a va
 tests\test_example.py:50:1: error: Function is missing a return type annotation  [no-untyped-def]
 tests\test_example.py:50:1: note: Use "-> None" if function does not return a value
 tests\test_example.py:52:12: error: Non-overlapping equality check (left operand type: "Literal[1]", right operand type: "Literal[2]")  [comparison-overlap]
+setup.py:1:1: error: Library stubs not installed for "setuptools"  [import-untyped]
+setup.py:1:1: note: Hint: "python3 -m pip install types-setuptools"
+setup.py:1:1: note: (or run "mypy --install-types" to install all missing stub packages)
+setup.py:1:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+src\main.py:14:18: error: Unsupported operand types for + ("int" and "str")  [operator]
+src\main.py:26:1: error: Function is missing a type annotation  [no-untyped-def]
+src\main.py:40:16: error: Argument 1 to "len" has incompatible type "Optional[str]"; expected "Sized"  [arg-type]
+src\main.py:54:5: error: Function is missing a type annotation  [no-untyped-def]
+src\main.py:62:5: error: Function is missing a return type annotation  [no-untyped-def]
+src\main.py:62:5: note: Use "-> None" if function does not return a value
+src\main.py:90:1: error: Function is missing a return type annotation  [no-untyped-def]
+src\main.py:90:1: note: Use "-> None" if function does not return a value
+src\main.py:93:17: error: Argument 1 to "add_numbers" has incompatible type "str"; expected "int"  [arg-type]
+src\main.py:96:14: error: Incompatible types in assignment (expression has type "int", variable has type "str")  [assignment]
+src\main.py:99:11: error: Name "undefined_variable" is not defined  [name-defined]
 Found 34 errors in 5 files (checked 7 source files)

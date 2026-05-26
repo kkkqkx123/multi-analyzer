@@ -10,8 +10,6 @@ pub mod test_analyzer;
 pub mod utils;
 pub mod config;
 pub mod stream;
-pub mod tee;
-pub mod tracking;
 
 pub use types::*;
 pub use parser::*;
@@ -29,3 +27,4 @@ pub use command::CommandOutput;
 pub use command::RunOptions;
 pub use test_analyzer::*;
 pub use utils::*;
+pub use stream::run_analysis_pipeline;

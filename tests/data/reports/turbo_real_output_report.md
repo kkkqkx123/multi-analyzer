@@ -12,6 +12,12 @@
 
 ## Issue Details (Grouped by File)
 
+### unknown
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| - | - | Error | run failed: command  exited (1) |
+
 ### D:\项目\cli\analyzer\tests\data\fixtures\sample_turbo_project\apps\web\src\index.ts
 
 | Line | Column | Level | Message |
@@ -21,12 +27,6 @@
 | 12 | 28 | Warning | Unexpected any. Specify a different type |
 | 12 | 34 | Warning | Unexpected any. Specify a different type |
 | 17 | 10 | Error | 'unusedFunction' is defined but never used |
-
-### unknown
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| - | - | Error | run failed: command  exited (1) |
 
 ## Raw Output
 

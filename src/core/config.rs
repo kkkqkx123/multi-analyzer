@@ -1,5 +1,15 @@
 //! TOML-based configuration system
-//! Provides customizable behavior for reports, commands, and filters
+//! Provides customizable behavior for reports, commands, and filters.
+//!
+//! # Integration Status
+//! This module defines the configuration schema and loading logic for `analyzer.toml`.
+//! It is designed for a future phase where CLI arguments and TOML config will be merged:
+//!   - `Config::load()` scans for `analyzer.toml` / `.analyzer.toml` / `.analyzer/config.toml`
+//!   - `FilterConfig::to_post_processor()` bridges config into `OutputPostProcessor` for output compression
+//!   - `CommandConfig` allows per-tech-stack command overrides
+//!
+//! TODO: Wire `Config::load()` into `main.rs` so `AnalyzeOptions` can be seeded from TOML.
+//!       (Currently blocked by the need for a merge strategy: CLI flags take precedence over TOML.)
 
 #![allow(dead_code)]
 

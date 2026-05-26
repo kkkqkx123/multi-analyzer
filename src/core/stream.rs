@@ -1,10 +1,25 @@
 //! Processing pipeline for command output analysis
-//! Provides a stage-based pipeline abstraction for chaining analysis steps
+//! Provides a stage-based pipeline abstraction for chaining analysis steps.
+//!
+//! # Integration Status
+//! This module offers an optional processing pipeline that individual plugins
+//! can use instead of directly calling parsers + filters. It supports:
+//!   - Stage-based processing (Parse → Filter → Analyze)
+//!   - Degradation: `StageResult::Complete / Degraded / Failed`
+//!   - `ProcessingPipeline::run()` for a complete parse-filter-analyze flow
+//!
+//! TODO: Integrate into plugin `analyze()` methods via delegation. Currently
+//!       every plugin manually calls parser + filters + analyzer in sequence.
+//!       The pipeline can reduce boilerplate but requires:
+//!         1. Plugins to accept a `ProcessingPipeline` (or build one from config)
+//!         2. Consistent error/degradation handling across all plugins
+//!       This is deferred because the current per-plugin approach is simpler
+//!       and more explicit during active development.
 
 #![allow(dead_code)]
 
-use crate::core::parser::ParseResult;
-use crate::core::types::{AnalysisResult, Issue};
+use crate::core::parser::{OutputParser, ParseResult};
+use crate::core::types::{AnalysisResult, AnalyzeOptions, Issue};
 use crate::core::utils::OutputPostProcessor;
 
 /// Pipeline error with degradation support
@@ -348,11 +363,55 @@ impl PipelineStage<String, String> for PostProcessStage {
     }
 }
 
+/// Convenience function: run a complete analysis pipeline from raw output.
+///
+/// This is an optional helper that wraps the common flow:
+///   `parser.parse() + AnalysisResult::from_issues() + result.filter_by_options()`
+///
+/// Any plugin's `analyze()` method can use this as a drop-in replacement for:
+/// ```ignore
+/// let issues = self.parser.parse(&output).data_or_default_owned();
+/// let result = AnalysisResult::from_issues(issues);
+/// Ok(self.filter_issues(result, options))
+/// ```
+///
+/// # Example
+/// ```ignore
+/// use crate::core::stream::run_analysis_pipeline;
+///
+/// fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
+///     let output = self.create_command_builder(options).execute()?;
+///     match run_analysis_pipeline(&self.parser, &output, options) {
+///         StageResult::Complete(r) | StageResult::Degraded(r, _) => Ok(r),
+///         StageResult::Failed(warnings) => {
+///             Err(AnalyzerError::ParseError(warnings.join("; ")))
+///         }
+///     }
+/// }
+/// ```
+pub fn run_analysis_pipeline(
+    parser: &dyn OutputParser,
+    output: &str,
+    options: &AnalyzeOptions,
+) -> StageResult<AnalysisResult> {
+    let result = parser.parse(output);
+    match result {
+        ParseResult::Full(issues) | ParseResult::Degraded(issues, _) => {
+            let result = AnalysisResult::from_issues(issues);
+            StageResult::Complete(result.filter_by_options(options))
+        }
+        ParseResult::Passthrough(raw) => {
+            StageResult::Failed(vec![
+                format!("Parser fell back to passthrough ({} chars)", raw.len())
+            ])
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::types::{IssueLevel, Location};
-    use crate::core::parser::OutputParser;
 
     struct MockParser;
 

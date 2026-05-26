@@ -1,7 +1,7 @@
 //! Maven Output Parser
 //Parsing the output of Maven compile/test Parsing the output of Maven compile/test
 
-use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult};
+use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestOutputParser, TestStatus, TestSummary, TestCase};
 
 pub struct MavenParser;
 
@@ -185,6 +185,86 @@ impl OutputParser for MavenParser {
 
 
 
+impl TestOutputParser for MavenParser {
+    fn parse_test_output(&self, output: &str) -> ParsedTestOutput {
+        let mut result = ParsedTestOutput::new();
+        result.compile_issues = <Self as OutputParser>::parse(self, output).data_or_default_owned();
+
+        let lines: Vec<&str> = output.lines().collect();
+        let mut i = 0;
+        let mut tests_run: usize = 0;
+        let mut failures: usize = 0;
+        let mut errors: usize = 0;
+        let mut skipped: usize = 0;
+
+        while i < lines.len() {
+            let line = lines[i];
+
+            // Parse test results line: "Tests run: 5, Failures: 1, Errors: 0, Skipped: 0"
+            if line.contains("Tests run:") {
+                let re = regex::Regex::new(
+                    r"Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)"
+                ).ok();
+                if let Some(re) = re {
+                    if let Some(caps) = re.captures(line) {
+                        tests_run = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                        failures = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                        errors = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                        skipped = caps.get(4).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                    }
+                }
+            }
+
+            // Parse test class running line: "Running com.example.MyTest"
+            if line.trim().starts_with("Running ") {
+                let class_name = line.trim().strip_prefix("Running ").unwrap_or("").trim();
+                if !class_name.is_empty() {
+                    // Check if this specific test failed by looking ahead for FAILURE! marker
+                    let mut j = i + 1;
+                    let mut class_failed = false;
+                    while j < lines.len() && !lines[j].contains("Tests run:") {
+                        if lines[j].contains("FAILURE!") {
+                            class_failed = true;
+                        }
+                        j += 1;
+                    }
+                    if class_failed {
+                        result.failed_tests.push(TestCase {
+                            name: class_name.to_string(),
+                            status: TestStatus::Failed,
+                            location: None,
+                            failure_details: None,
+                            execution_time: None,
+                        });
+                    } else {
+                        result.passed_tests.push(TestCase {
+                            name: class_name.to_string(),
+                            status: TestStatus::Passed,
+                            location: None,
+                            failure_details: None,
+                            execution_time: None,
+                        });
+                    }
+                }
+            }
+
+            i += 1;
+        }
+
+        let passed = tests_run.saturating_sub(failures + errors);
+        result.test_summary = Some(TestSummary {
+            total: tests_run,
+            passed,
+            failed: failures + errors,
+            ignored: skipped,
+            measured: 0,
+            filtered: 0,
+            execution_time: None,
+        });
+
+        result
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

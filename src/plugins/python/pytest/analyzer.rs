@@ -3,8 +3,7 @@
 
 use crate::core::{
     AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
-    TestOutputParser,
+    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::PytestParser;
@@ -24,39 +23,6 @@ impl PytestAnalyzer {
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
         let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("-v --color=no --tb=short");
         CommandBuilder::from_exec_string(&format!("pytest {}", command_str))
-    }
-
-    /// Create test command builder
-    fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
-        let mut builder = CommandBuilder::new("pytest");
-        
-        // Default to "-v --color=no" if no command specified
-        let command_str = if options.command.is_empty() {
-            "-v --color=no"
-        } else {
-            &options.command
-        };
-        
-        for arg in command_str.split_whitespace() {
-            builder = builder.arg(arg);
-        }
-
-        // Add test filter if specified
-        if let Some(ref filter) = options.filter {
-            builder = builder.arg("-k").arg(filter);
-        }
-
-        // Run specific test file or directory if specified
-        if let Some(ref test) = options.test {
-            builder = builder.arg(test);
-        }
-
-        // Add extra arguments
-        for arg in &options.extra_args {
-            builder = builder.arg(arg);
-        }
-
-        builder
     }
 
     fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
@@ -118,6 +84,10 @@ impl BuildAnalyzer for PytestAnalyzer {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+
+    fn as_test_analyzer(&self) -> Option<&dyn TestAnalyzer> {
+        Some(self)
+    }
 }
 
 impl TestAnalyzer for PytestAnalyzer {
@@ -125,19 +95,36 @@ impl TestAnalyzer for PytestAnalyzer {
         true
     }
 
-    fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError> {
-        let builder = self.create_test_command(options);
-        let output = builder
-            .execute()
-            .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;
+    fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
+        let mut builder = CommandBuilder::new("pytest");
+        
+        // Default to "-v --color=no" if no command specified
+        let command_str = if options.command.is_empty() {
+            "-v --color=no"
+        } else {
+            &options.command
+        };
+        
+        for arg in command_str.split_whitespace() {
+            builder = builder.arg(arg);
+        }
 
-        // Parse test output
-        let parsed = self
-            .test_parser()
-            .ok_or(TestAnalyzerError::NotSupported)?
-            .parse_test_output(&output);
+        // Add test filter if specified
+        if let Some(ref filter) = options.filter {
+            builder = builder.arg("-k").arg(filter);
+        }
 
-        Ok(parsed)
+        // Run specific test file or directory if specified
+        if let Some(ref test) = options.test {
+            builder = builder.arg(test);
+        }
+
+        // Add extra arguments
+        for arg in &options.extra_args {
+            builder = builder.arg(arg);
+        }
+
+        builder
     }
 
     fn test_parser(&self) -> Option<&dyn TestOutputParser> {

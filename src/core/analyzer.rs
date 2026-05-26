@@ -4,6 +4,7 @@
 use std::time::Duration;
 use super::types::{AnalysisResult, AnalyzeOptions, TechStack};
 use super::parser::OutputParser;
+use super::test_analyzer::TestAnalyzer;
 
 /// Analyzer Error Type
 #[derive(Debug)]
@@ -56,7 +57,13 @@ pub trait BuildAnalyzer: Send + Sync {
     fn parser(&self) -> &dyn OutputParser;
 
     /// Convert to Any for downcasting
+    #[allow(dead_code)]
     fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Get the test analyzer implementation if supported
+    fn as_test_analyzer(&self) -> Option<&dyn TestAnalyzer> {
+        None
+    }
 }
 
 /// Plugin Registry

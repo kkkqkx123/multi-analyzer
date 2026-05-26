@@ -3,8 +3,7 @@
 
 use crate::core::{
     AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
-    TestOutputParser,
+    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::GoParser;
@@ -25,9 +24,61 @@ impl GoAnalyzer {
         let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("build ./...");
         CommandBuilder::from_exec_string(&format!("go {}", command_str))
     }
+}
 
-    /// Create go test command
-    fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
+impl Default for GoAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BuildAnalyzer for GoAnalyzer {
+    fn tech_stack(&self) -> TechStack {
+        TechStack::GoBuild
+    }
+
+    fn supported_commands(&self) -> Vec<&str> {
+        vec!["go", "golang"]
+    }
+
+    fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
+        use crate::core::run_analysis_pipeline;
+        use crate::core::stream::StageResult;
+
+        let builder = self.create_command_builder(options);
+        let output = builder.execute()?;
+
+        println!("Parsing output...");
+        match run_analysis_pipeline(&self.parser, &output, options) {
+            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
+                println!("Found {} issues", result.total_issues);
+                Ok(result)
+            }
+            StageResult::Failed(warnings) => {
+                Err(AnalyzerError::ParseError(warnings.join("; ")))
+            }
+        }
+    }
+
+    fn parser(&self) -> &dyn OutputParser {
+        &self.parser
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_test_analyzer(&self) -> Option<&dyn TestAnalyzer> {
+        Some(self)
+    }
+}
+
+impl TestAnalyzer for GoAnalyzer {
+    fn supports_test(&self) -> bool {
+        true
+    }
+
+    fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new("go");
         
         // Default to "test -v ./..." if no command specified
@@ -67,67 +118,6 @@ impl GoAnalyzer {
         }
 
         builder
-    }
-
-    fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        result.filter_by_options(options)
-    }
-}
-
-impl Default for GoAnalyzer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BuildAnalyzer for GoAnalyzer {
-    fn tech_stack(&self) -> TechStack {
-        TechStack::GoBuild
-    }
-
-    fn supported_commands(&self) -> Vec<&str> {
-        vec!["go", "golang"]
-    }
-
-    fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        let issues = self.parser.parse(&output).data_or_default_owned();
-        println!("Found {} issues", issues.len());
-
-        let result = AnalysisResult::from_issues(issues);
-        Ok(self.filter_issues(result, options))
-    }
-
-    fn parser(&self) -> &dyn OutputParser {
-        &self.parser
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl TestAnalyzer for GoAnalyzer {
-    fn supports_test(&self) -> bool {
-        true
-    }
-
-    fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError> {
-        let builder = self.create_test_command(options);
-        let output = builder
-            .execute()
-            .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;
-
-        // Parse output using TestOutputParser
-        let parsed = self
-            .test_parser()
-            .ok_or(TestAnalyzerError::NotSupported)?
-            .parse_test_output(&output);
-
-        Ok(parsed)
     }
 
     fn test_parser(&self) -> Option<&dyn TestOutputParser> {

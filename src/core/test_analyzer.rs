@@ -2,6 +2,7 @@
 //! Define a uniform interface for test execution
 
 use super::types::{Issue, TestCase, TestSummary, AnalyzeOptions, TestAnalysisResult};
+use super::command::CommandBuilder;
 
 /// Test Analyzer Error
 #[derive(Debug)]
@@ -127,7 +128,21 @@ pub trait TestAnalyzer: Send + Sync {
     fn supports_test(&self) -> bool;
 
     /// Run the test and return the parsed output
-    fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError>;
+    /// Default implementation uses build_test_command + test_parser
+    fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError> {
+        let builder = self.build_test_command(options);
+        let output = builder
+            .execute()
+            .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;
+        let parsed = self
+            .test_parser()
+            .ok_or(TestAnalyzerError::NotSupported)?
+            .parse_test_output(&output);
+        Ok(parsed)
+    }
+
+    /// Build the test command
+    fn build_test_command(&self, options: &TestOptions) -> CommandBuilder;
 
     /// Getting the test parser
     fn test_parser(&self) -> Option<&dyn TestOutputParser> {

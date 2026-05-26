@@ -1,7 +1,7 @@
 //! Gradle Output Parser
 //! Parsing the output of Gradle compile/test
 
-use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult};
+use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestOutputParser, TestStatus, TestSummary, TestCase};
 
 pub struct GradleParser;
 
@@ -160,6 +160,133 @@ impl OutputParser for GradleParser {
 }
 
 
+
+impl TestOutputParser for GradleParser {
+    fn parse_test_output(&self, output: &str) -> ParsedTestOutput {
+        let mut result = ParsedTestOutput::new();
+        result.compile_issues = <Self as OutputParser>::parse(self, output).data_or_default_owned();
+
+        let lines: Vec<&str> = output.lines().collect();
+        let mut i = 0;
+        let mut passed: usize = 0;
+        let mut failed: usize = 0;
+        let mut skipped: usize = 0;
+
+        while i < lines.len() {
+            let line = lines[i];
+
+            // Parse test execution lines: "com.example.MyTest > testMethod PASSED"
+            // or "com.example.MyTest > testMethod FAILED"
+            // or "com.example.MyTest > testMethod SKIPPED"
+            if line.contains(" > ") && (line.contains("PASSED") || line.contains("FAILED") || line.contains("SKIPPED")) {
+                let parts: Vec<&str> = line.splitn(3, " > ").collect();
+                if parts.len() >= 2 {
+                    let class_name = parts[0].trim();
+                    let method_parts: Vec<&str> = parts[1].splitn(2, ' ').collect();
+                    let method_name = method_parts[0].trim();
+                    let full_name = format!("{}::{}", class_name, method_name);
+
+                    // Check if the last part is PASSED/FAILED/SKIPPED
+                    let last_part = parts.last().unwrap_or(&"").trim();
+                    if last_part.starts_with("PASSED") {
+                        result.passed_tests.push(TestCase {
+                            name: full_name.clone(),
+                            status: TestStatus::Passed,
+                            location: None,
+                            failure_details: None,
+                            execution_time: None,
+                        });
+                        passed += 1;
+                    } else if last_part.starts_with("FAILED") {
+                        result.failed_tests.push(TestCase {
+                            name: full_name.clone(),
+                            status: TestStatus::Failed,
+                            location: None,
+                            failure_details: None,
+                            execution_time: None,
+                        });
+                        failed += 1;
+
+                        // Collect failure details (following lines)
+                        let mut details = Vec::new();
+                        let mut j = i + 1;
+                        while j < lines.len() {
+                            let next_line = lines[j];
+                            if next_line.contains(" > ") && (next_line.contains("PASSED") || next_line.contains("FAILED") || next_line.contains("SKIPPED")) {
+                                break;
+                            }
+                            if next_line.trim().is_empty() {
+                                j += 1;
+                                continue;
+                            }
+                            details.push(next_line.to_string());
+                            j += 1;
+                        }
+
+                        if let Some(test) = result.failed_tests.iter_mut()
+                            .find(|t| t.name == full_name) {
+                            test.failure_details = Some(details.join("\n"));
+                        }
+                    } else if last_part.starts_with("SKIPPED") {
+                        result.ignored_tests.push(TestCase {
+                            name: full_name.clone(),
+                            status: TestStatus::Ignored(None),
+                            location: None,
+                            failure_details: None,
+                            execution_time: None,
+                        });
+                        skipped += 1;
+                    }
+
+                    // Try to extract execution time: "PASSED (1.234s)"
+                    if let Some(time_str) = last_part
+                        .strip_prefix("PASSED (")
+                        .or_else(|| last_part.strip_prefix("FAILED ("))
+                        .or_else(|| last_part.strip_prefix("SKIPPED ("))
+                        .and_then(|s| s.strip_suffix(')'))
+                    {
+                        // Parse time from format like "1.234s"
+                        let time_val = time_str.trim_end_matches('s').parse().ok();
+                        if let Some(test) = result.failed_tests.iter_mut()
+                            .chain(result.passed_tests.iter_mut())
+                            .chain(result.ignored_tests.iter_mut())
+                            .find(|t| t.name == full_name) {
+                            test.execution_time = time_val;
+                        }
+                    }
+                }
+            }
+
+            // Parse summary line: "PASSED: 100, FAILED: 1, SKIPPED: 2"
+            if line.contains("PASSED:") && line.contains("FAILED:") {
+                let re = regex::Regex::new(
+                    r"PASSED:\s*(\d+),\s*FAILED:\s*(\d+),\s*SKIPPED:\s*(\d+)"
+                ).ok();
+                if let Some(re) = re {
+                    if let Some(caps) = re.captures(line) {
+                        passed = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(passed);
+                        failed = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(failed);
+                        skipped = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(skipped);
+                    }
+                }
+            }
+
+            i += 1;
+        }
+
+        result.test_summary = Some(TestSummary {
+            total: passed + failed + skipped,
+            passed,
+            failed,
+            ignored: skipped,
+            measured: 0,
+            filtered: 0,
+            execution_time: None,
+        });
+
+        result
+    }
+}
 
 #[cfg(test)]
 mod tests {

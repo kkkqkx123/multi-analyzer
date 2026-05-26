@@ -14,8 +14,8 @@ mod core;
 mod plugins;
 
 use core::{
-    AnalysisResult, AnalyzeOptions, ReportFormat, ReporterFactory, SubCommand, TechStack,
-    TestAnalyzer, TestOptions, Verbosity,
+    AnalysisResult, AnalyzeOptions, ReporterFactory, SubCommand, TechStack, TestOptions,
+    Verbosity,
 };
 
 fn main() {
@@ -107,6 +107,17 @@ fn parse_arguments(args: &[String]) -> (TechStack, AnalyzeOptions) {
             "--output" | "-o" => {
                 if i + 1 < args.len() {
                     options.output_file = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--format" => {
+                if i + 1 < args.len() {
+                    let format_str = &args[i + 1];
+                    options.report_format = format_str.parse().unwrap_or_else(|e| {
+                        eprintln!("Error: Invalid format '{}': {}", format_str, e);
+                        eprintln!("Supported formats: markdown, json, html");
+                        std::process::exit(1);
+                    });
                     i += 1;
                 }
             }
@@ -260,7 +271,7 @@ fn run_analysis(
             println!("Total issues: {}", result.total_issues);
 
             // Generating reports
-            let reporter = ReporterFactory::create(ReportFormat::Markdown);
+            let reporter = ReporterFactory::create(options.report_format);
             let report_options = to_report_options(options, &analyzer.tech_stack(), options.subcommand.as_ref());
             let report = match reporter.generate_with_options(&result, report_options) {
                 Ok(r) => r,
@@ -271,10 +282,11 @@ fn run_analysis(
             };
 
             // output report
+            let default_name = format!("analysis_report.{}", options.report_format.extension());
             let output_path = options
                 .output_file
                 .as_deref()
-                .unwrap_or("analysis_report.md");
+                .unwrap_or(&default_name);
 
             if let Err(e) = reporter.write_to_file(&report, Path::new(output_path)) {
                 eprintln!("Failed to write report: {}", e);
@@ -297,9 +309,9 @@ fn run_test_analysis(
     analyzer: &dyn core::BuildAnalyzer,
     options: &AnalyzeOptions,
 ) {
-    // Try to downcast to TestAnalyzer
-    let test_analyzer = match analyzer.as_any().downcast_ref::<&dyn TestAnalyzer>() {
-        Some(ta) => *ta,
+    // Try to get TestAnalyzer from BuildAnalyzer
+    let test_analyzer = match analyzer.as_test_analyzer() {
+        Some(ta) => ta,
         None => {
             eprintln!("Error: Test analysis not supported for {}", analyzer.name());
             std::process::exit(1);
@@ -327,7 +339,7 @@ fn run_test_analysis(
             }
 
             // Generate test report
-            let reporter = ReporterFactory::create(ReportFormat::Markdown);
+            let reporter = ReporterFactory::create(options.report_format);
             let report_options = to_report_options(options, &analyzer.tech_stack(), options.subcommand.as_ref());
             let report = match reporter.generate_test_report_with_options(&test_output.into(), report_options) {
                 Ok(r) => r,
@@ -337,10 +349,11 @@ fn run_test_analysis(
                 }
             };
 
+            let default_name = format!("test_report.{}", options.report_format.extension());
             let output_path = options
                 .output_file
                 .as_deref()
-                .unwrap_or("test_report.md");
+                .unwrap_or(&default_name);
 
             if let Err(e) = reporter.write_to_file(&report, Path::new(output_path)) {
                 eprintln!("Failed to write report: {}", e);
@@ -386,7 +399,8 @@ fn show_help() {
     println!("  --filter-paths <paths>  Filter by file paths (comma-separated)");
     println!("  --verbose               Show all issues without truncation");
     println!("  -q, --quiet              Minimal output (summary only)");
-    println!("  -o, --output <file>     Output file (default: analysis_report.md)");
+    println!("  -o, --output <file>     Output file (default: analysis_report.md/.json/.html)");
+    println!("  --format <format>       Report format: markdown, json, html (default: markdown)");
     println!();
     println!("Examples:");
     println!("  analyzer cargo \"check\"");

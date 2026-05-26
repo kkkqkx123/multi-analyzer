@@ -55,10 +55,6 @@ impl GccAnalyzer {
 
         builder
     }
-
-    fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        result.filter_by_options(options)
-    }
 }
 
 impl Default for GccAnalyzer {
@@ -77,15 +73,22 @@ impl BuildAnalyzer for GccAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
+        use crate::core::run_analysis_pipeline;
+        use crate::core::stream::StageResult;
+
         let builder = self.create_command_builder(options);
         let output = builder.execute()?;
 
         println!("Parsing output...");
-        let issues = self.parser.parse(&output).data_or_default_owned();
-        println!("Found {} issues", issues.len());
-
-        let result = AnalysisResult::from_issues(issues);
-        Ok(self.filter_issues(result, options))
+        match run_analysis_pipeline(&self.parser, &output, options) {
+            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
+                println!("Found {} issues", result.total_issues);
+                Ok(result)
+            }
+            StageResult::Failed(warnings) => {
+                Err(AnalyzerError::ParseError(warnings.join("; ")))
+            }
+        }
     }
 
     fn parser(&self) -> &dyn OutputParser {

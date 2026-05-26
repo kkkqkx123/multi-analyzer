@@ -3,8 +3,7 @@
 
 use crate::core::{
     AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    ParsedTestOutput, TechStack, TestAnalyzer, TestAnalyzerError, TestOptions,
-    TestOutputParser,
+    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::CargoParser;
@@ -87,9 +86,68 @@ impl CargoAnalyzer {
 
         builder.arg("--message-format=short")
     }
+}
 
-    /// Creating a test command
-    fn create_test_command(&self, options: &TestOptions) -> CommandBuilder {
+impl Default for CargoAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BuildAnalyzer for CargoAnalyzer {
+    fn tech_stack(&self) -> TechStack {
+        TechStack::Cargo
+    }
+
+    fn supported_commands(&self) -> Vec<&str> {
+        vec!["cargo", "rust"]
+    }
+
+    fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
+        use crate::core::run_analysis_pipeline;
+        use crate::core::stream::StageResult;
+
+        let builder = self.create_command_builder(options);
+        let output = builder.execute()?;
+
+        println!("Parsing output...");
+        let result = match run_analysis_pipeline(&self.parser, &output, options) {
+            StageResult::Complete(r) | StageResult::Degraded(r, _) => r,
+            StageResult::Failed(warnings) => {
+                return Err(AnalyzerError::ParseError(warnings.join("; ")));
+            }
+        };
+
+        // Validate that we got valid output
+        if output.contains("error: could not compile") && result.total_issues == 0 {
+            return Err(AnalyzerError::ParseError(
+                "Failed to parse cargo output: compilation failed but no issues were extracted".to_string()
+            ));
+        }
+
+        println!("Found {} issues", result.total_issues);
+        Ok(result)
+    }
+
+    fn parser(&self) -> &dyn OutputParser {
+        &self.parser
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_test_analyzer(&self) -> Option<&dyn TestAnalyzer> {
+        Some(self)
+    }
+}
+
+impl TestAnalyzer for CargoAnalyzer {
+    fn supports_test(&self) -> bool {
+        true
+    }
+
+    fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new("cargo");
         
         // Default to "test" if no command specified
@@ -127,74 +185,6 @@ impl CargoAnalyzer {
         builder = builder.arg("--").arg("--nocapture");
 
         builder
-    }
-
-    fn filter_issues(&self, result: AnalysisResult, options: &AnalyzeOptions) -> AnalysisResult {
-        result.filter_by_options(options)
-    }
-}
-
-impl Default for CargoAnalyzer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BuildAnalyzer for CargoAnalyzer {
-    fn tech_stack(&self) -> TechStack {
-        TechStack::Cargo
-    }
-
-    fn supported_commands(&self) -> Vec<&str> {
-        vec!["cargo", "rust"]
-    }
-
-    fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        let issues = self.parser.parse(&output).data_or_default_owned();
-        println!("Found {} issues", issues.len());
-
-        // Validate that we got valid output
-        if output.contains("error: could not compile") && issues.is_empty() {
-            return Err(AnalyzerError::ParseError(
-                "Failed to parse cargo output: compilation failed but no issues were extracted".to_string()
-            ));
-        }
-
-        let result = AnalysisResult::from_issues(issues);
-        Ok(self.filter_issues(result, options))
-    }
-
-    fn parser(&self) -> &dyn OutputParser {
-        &self.parser
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl TestAnalyzer for CargoAnalyzer {
-    fn supports_test(&self) -> bool {
-        true
-    }
-
-    fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError> {
-        let builder = self.create_test_command(options);
-        let output = builder
-            .execute()
-            .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;
-
-        // Parsing Output with TestOutputParser
-        let parsed = self
-            .test_parser()
-            .ok_or(TestAnalyzerError::NotSupported)?
-            .parse_test_output(&output);
-
-        Ok(parsed)
     }
 
     fn test_parser(&self) -> Option<&dyn TestOutputParser> {
