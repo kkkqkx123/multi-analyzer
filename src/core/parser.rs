@@ -311,3 +311,332 @@ impl Default for BaseParser {
         Self::new()
     }
 }
+
+/// Block collector for multi-line error blocks
+///
+/// Some build tools (cargo, gcc, clang, MSBuild) output errors as
+/// multi-line blocks that require full context for proper extraction.
+/// This trait provides a lightweight block accumulation pattern
+/// that parsers can optionally implement alongside `OutputParser`.
+///
+/// # Example — Cargo error block
+///
+/// ```ignore
+/// error[E0308]: mismatched types
+///   --> src/main.rs:10:5
+///    |
+/// 10 |     let x: String = 42;
+///    |     ^^^^^^^^^^^^^^^^^^^^ expected `String`, found integer
+/// ```
+///
+/// # Usage
+///
+/// A parser that implements `BlockCollector` can use the
+/// [`collect_blocks`] helper to iterate blocks, or call
+/// [`collect_all_blocks`] to process the full output.
+///
+/// [`collect_blocks`]: BlockCollector::collect_blocks
+/// [`collect_all_blocks`]: BlockCollector::collect_all_blocks
+pub trait BlockCollector: Send + Sync {
+    /// Whether the given line marks the start of a new block.
+    fn is_block_start(&self, line: &str) -> bool;
+
+    /// Whether the given line marks the end of the current block.
+    /// Called for each line after the block start.
+    /// Default: empty lines terminate blocks.
+    fn is_block_end(&self, line: &str) -> bool {
+        line.trim().is_empty()
+    }
+
+    /// Extract issues from a fully collected block.
+    fn extract_issues(&self, block: &[String]) -> Vec<Issue>;
+
+    /// Iterate over lines, yielding each accumulated block.
+    ///
+    /// Lines before the first block start are ignored.
+    fn collect_blocks<'a>(&'a self, lines: &'a [String]) -> BlockIter<'a, Self>
+    where
+        Self: Sized,
+    {
+        BlockIter {
+            collector: self,
+            lines,
+            index: 0,
+            in_block: false,
+        }
+    }
+
+    /// Collect all blocks from the output and extract issues.
+    fn collect_all_blocks(&self, output: &str) -> Vec<Issue> {
+        let lines: Vec<String> = output.lines().map(String::from).collect();
+        let mut issues = Vec::new();
+        let mut block: Vec<String> = Vec::new();
+        let mut in_block = false;
+
+        for line in &lines {
+            if !in_block {
+                if self.is_block_start(line) {
+                    in_block = true;
+                    block.clear();
+                    block.push(line.clone());
+                }
+            } else if self.is_block_end(line) {
+                issues.extend(self.extract_issues(&block));
+                in_block = false;
+                block.clear();
+            } else {
+                block.push(line.clone());
+            }
+        }
+
+        // Flush remaining block
+        if in_block && !block.is_empty() {
+            issues.extend(self.extract_issues(&block));
+        }
+
+        issues
+    }
+}
+
+/// Iterator that yields accumulated blocks from lines.
+pub struct BlockIter<'a, C: ?Sized> {
+    collector: &'a C,
+    lines: &'a [String],
+    index: usize,
+    in_block: bool,
+}
+
+impl<'a, C: BlockCollector + ?Sized> Iterator for BlockIter<'a, C> {
+    type Item = Vec<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < self.lines.len() {
+            let line = &self.lines[self.index];
+
+            if !self.in_block {
+                if self.collector.is_block_start(line) {
+                    self.in_block = true;
+                    let mut block = Vec::new();
+                    block.push(line.clone());
+                    self.index += 1;
+
+                    // Accumulate remaining lines until block end
+                    while self.index < self.lines.len() {
+                        let next_line = &self.lines[self.index];
+                        if self.collector.is_block_end(next_line) {
+                            self.in_block = false;
+                            return Some(block);
+                        }
+                        block.push(next_line.clone());
+                        self.index += 1;
+                    }
+
+                    // End of input while in block
+                    self.in_block = false;
+                    return Some(block);
+                }
+            } else {
+                // Should not reach here due to above logic
+                self.in_block = false;
+            }
+
+            self.index += 1;
+        }
+
+        None
+    }
+}
+
+impl<C: BlockCollector + ?Sized> BlockIter<'_, C> {
+    /// Collect all remaining blocks into a Vec.
+    pub fn collect_remaining(&mut self) -> Vec<Vec<String>> {
+        let mut blocks = Vec::new();
+        for block in self.by_ref() {
+            blocks.push(block);
+        }
+        blocks
+    }
+}
+
+#[cfg(test)]
+mod block_collector_tests {
+    use super::*;
+
+    /// A mock BlockCollector that treats lines starting with "error:" as block starts
+    /// and empty lines as block ends. Extracts the first line as the issue message.
+    struct MockErrorCollector;
+
+    impl BlockCollector for MockErrorCollector {
+        fn is_block_start(&self, line: &str) -> bool {
+            let trimmed = line.trim();
+            trimmed.starts_with("error:")
+                || trimmed.starts_with("error[")
+                || trimmed.starts_with("warning:")
+        }
+
+        fn is_block_end(&self, line: &str) -> bool {
+            line.trim().is_empty() || line.trim() == "---"
+        }
+
+        fn extract_issues(&self, block: &[String]) -> Vec<Issue> {
+            if block.is_empty() {
+                return vec![];
+            }
+
+            let first = block[0].trim();
+            let level = if first.starts_with("error:") || first.starts_with("error[") {
+                IssueLevel::Error
+            } else {
+                IssueLevel::Warning
+            };
+
+            let message = if let Some(colon) = first.find(':') {
+                first[colon + 1..].trim().to_string()
+            } else {
+                first.to_string()
+            };
+
+            // Try to extract file:line from block
+            // Format: "  --> file.rs:line:col"  or  "  --> file.rs:line"
+            let mut location = Location::new("unknown");
+            for line in block {
+                let trimmed = line.trim();
+                if let Some(arrow) = trimmed.find("-->") {
+                    let path_part = arrow + 3;
+                    let path_trimmed = trimmed[path_part..].trim();
+
+                    // Split on ':' — format is "file.rs:line:col" or "file.rs:line"
+                    // Use rsplitn to find last colon, then second-to-last for line number
+                    let parts: Vec<&str> = path_trimmed.splitn(3, ':').collect();
+                    if parts.len() >= 2 {
+                        let file_path = parts[0].trim();
+                        if let Ok(line_num) = parts[1].trim().parse::<u32>() {
+                            location = Location::new(file_path.to_string()).with_line(line_num);
+                        }
+                    }
+                }
+            }
+
+            vec![Issue::new(level, message, location)]
+        }
+    }
+
+    #[test]
+    fn test_collect_single_block() {
+        let collector = MockErrorCollector;
+        let output = "\
+error[E0308]: mismatched types
+  --> src/main.rs:10:5
+   |
+10 |     let x: String = 42;
+   |     ^^^^^^^^^^^^^^^^^^^^ expected `String`, found integer
+";
+        let issues = collector.collect_all_blocks(output);
+        assert_eq!(issues.len(), 1, "Expected 1 issue, got {}", issues.len());
+
+        assert_eq!(issues[0].location.file_path, "src/main.rs", "Expected file_path = src/main.rs, got {}", issues[0].location.file_path);
+        assert_eq!(issues[0].message, "mismatched types", "Expected message = mismatched types, got {}", issues[0].message);
+        assert_eq!(issues[0].location.line_number, Some(10), "Expected line_number = 10, got {:?}", issues[0].location.line_number);
+        assert!(matches!(issues[0].level, IssueLevel::Error), "Expected Error level, got {:?}", issues[0].level);
+    }
+
+    #[test]
+    fn test_collect_multiple_blocks() {
+        let collector = MockErrorCollector;
+        let output = "\
+error: first error
+  --> src/a.rs:1:1
+
+warning: second issue
+  --> src/b.rs:5:3
+";
+        let issues = collector.collect_all_blocks(output);
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].message, "first error");
+        assert_eq!(issues[1].message, "second issue");
+    }
+
+    #[test]
+    fn test_block_iterator() {
+        let collector = MockErrorCollector;
+        let lines: Vec<String> = vec![
+            "error: first".to_string(),
+            "  --> a.rs:1".to_string(),
+            "".to_string(),
+            "warning: second".to_string(),
+            "  --> b.rs:5".to_string(),
+            "".to_string(),
+        ];
+
+        let blocks: Vec<_> = collector.collect_blocks(&lines).collect();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].len(), 2);
+        assert_eq!(blocks[1].len(), 2);
+    }
+
+    #[test]
+    fn test_collector_ignores_before_first_block() {
+        let collector = MockErrorCollector;
+        let lines: Vec<String> = vec![
+            "some header line".to_string(),
+            "another header".to_string(),
+            "".to_string(),
+            "error: real issue".to_string(),
+            "  --> file.rs:1".to_string(),
+        ];
+
+        let blocks: Vec<_> = collector.collect_blocks(&lines).collect();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0][0], "error: real issue");
+    }
+
+    #[test]
+    fn test_custom_block_end() {
+        struct DashEndCollector;
+        impl BlockCollector for DashEndCollector {
+            fn is_block_start(&self, line: &str) -> bool {
+                line.starts_with("error:")
+            }
+            fn is_block_end(&self, line: &str) -> bool {
+                line.trim() == "---"
+            }
+            fn extract_issues(&self, block: &[String]) -> Vec<Issue> {
+                let msg = block.first().map(|l| l.trim().to_string()).unwrap_or_default();
+                vec![Issue::new(IssueLevel::Error, msg, Location::new("unknown"))]
+            }
+        }
+
+        let collector = DashEndCollector;
+        let output = "\
+error: block one
+line in block one
+---
+error: block two
+line in block two
+---
+";
+        let issues = collector.collect_all_blocks(output);
+        assert_eq!(issues.len(), 2);
+    }
+
+    #[test]
+    fn test_collect_remaining() {
+        let collector = MockErrorCollector;
+        let lines: Vec<String> = vec![
+            "error: first".to_string(),
+            "  --> a.rs:1".to_string(),
+            "".to_string(),
+            "error: second".to_string(),
+            "  --> b.rs:2".to_string(),
+        ];
+
+        let mut iter = collector.collect_blocks(&lines);
+        // Skip first block
+        let first = iter.next();
+        assert!(first.is_some());
+
+        let remaining = iter.collect_remaining();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0][0], "error: second");
+    }
+}

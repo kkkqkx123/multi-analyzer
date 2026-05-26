@@ -3,10 +3,12 @@
 
 pub mod cargo;
 pub mod cpp;
+pub mod dotnet;
 pub mod go;
 pub mod java;
 pub mod npm;
 pub mod python;
+pub mod ruby;
 
 use crate::core::PluginRegistry;
 
@@ -32,6 +34,12 @@ pub fn create_registry() -> PluginRegistry {
 
     // Registering the Go Analyzer
     registry.register(Box::new(go::GoAnalyzer::new()));
+
+    // Registering the .NET Analyzer
+    registry.register(Box::new(dotnet::DotnetAnalyzer::new()));
+
+    // Registering the Ruby Analyzer
+    registry.register(Box::new(ruby::RubyAnalyzer::new()));
 
     // Registering the C++ Analyzers
     registry.register(Box::new(cpp::CMakeAnalyzer::new()));

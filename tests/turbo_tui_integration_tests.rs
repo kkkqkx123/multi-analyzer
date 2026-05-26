@@ -27,22 +27,7 @@ fn default_analyze_options(subcommand: &str) -> analyzer::core::AnalyzeOptions {
         cpp_standard: None,
         json_output: false,
         report_format: analyzer::core::ReportFormat::Markdown,
-        workspace: false,
-        package: vec![],
-        exclude: vec![],
-        lib: false,
-        bin: vec![],
-        bins: false,
-        test: vec![],
-        tests: false,
-        example: vec![],
-        examples: false,
-        bench: vec![],
-        benches: false,
-        all_targets: false,
-        features: vec![],
-        all_features: false,
-        no_default_features: false,
+        ..analyzer::core::AnalyzeOptions::default()
     }
 }
 

@@ -1310,21 +1310,63 @@ D:\project\packages\storage\src\json\base-json-storage.ts
     #[test]
     fn test_strip_turbo_prefixes_with_package() {
         let parser = NpmParser::new();
-        
+
         let output = r#"web:lint: src/index.ts
 web:lint:    4:7   error  'unusedVariable' is assigned a value but never used  @typescript-eslint/no-unused-vars
 app:lint: src/utils.ts
 app:lint:    10:5  warning  Unexpected any  @typescript-eslint/no-explicit-any"#;
-        
+
         let lines_with_packages = parser.strip_turbo_prefixes_with_package(output);
-        
+
         // Should have 4 lines (2 file paths + 2 issues)
         assert!(lines_with_packages.len() >= 2, "Should have at least 2 lines with content");
-        
+
         // Check that package information is preserved
         let package_lines: Vec<_> = lines_with_packages.iter()
             .filter(|(pkg, _)| pkg.is_some())
             .collect();
         assert!(package_lines.len() >= 2, "Should have at least 2 lines with package info");
+    }
+
+    #[test]
+    fn test_parse_tsc_native_format() {
+        let parser = NpmParser::new();
+        // tsc native format: file.ts(line,col): error TS2345: message
+        let line = "src/app.ts(10,5): error TS2345: Type 'X' is not assignable to type 'Y'";
+        let issue = parser.parse_typescript_format(line).expect("Should parse tsc native format");
+
+        assert_eq!(issue.location.file_path, "src/app.ts");
+        assert_eq!(issue.location.line_number, Some(10));
+        assert_eq!(issue.location.column_number, Some(5));
+        assert!(matches!(issue.level, IssueLevel::Error));
+        assert!(issue.message.contains("Type 'X' is not assignable"));
+    }
+
+    #[test]
+    fn test_parse_tsc_flag_format() {
+        let parser = NpmParser::new();
+        // tsc flag format: file.ts:line:col - error TS2345: message
+        let line = "src/app.ts:5:3 - error TS2322: Type 'string' is not assignable to type 'number'";
+        let issue = parser.parse_typescript_format(line).expect("Should parse tsc flag format");
+
+        assert_eq!(issue.location.file_path, "src/app.ts");
+        assert_eq!(issue.location.line_number, Some(5));
+        assert_eq!(issue.location.column_number, Some(3));
+        assert!(matches!(issue.level, IssueLevel::Error));
+        assert!(issue.message.contains("Type 'string' is not assignable"));
+    }
+
+    #[test]
+    fn test_parse_tsc_warning_flag_format() {
+        let parser = NpmParser::new();
+        // tsc with warning: file.ts:line:col - warning TS6133: message
+        let line = "src/util.ts:10:7 - warning TS6133: 'unusedVar' is declared but its value is never read";
+        let issue = parser.parse_typescript_format(line).expect("Should parse tsc warning format");
+
+        assert_eq!(issue.location.file_path, "src/util.ts");
+        assert_eq!(issue.location.line_number, Some(10));
+        assert_eq!(issue.location.column_number, Some(7));
+        assert!(matches!(issue.level, IssueLevel::Warning));
+        assert!(issue.message.contains("unusedVar"));
     }
 }

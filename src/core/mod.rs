@@ -12,7 +12,13 @@ pub mod config;
 pub mod stream;
 
 pub use types::*;
-pub use parser::*;
+pub use parser::BaseParser;
+#[allow(unused_imports)]
+pub use parser::BlockCollector;
+#[allow(unused_imports)]
+pub use parser::BlockIter;
+pub use parser::OutputParser;
+pub use parser::ParseResult;
 pub use analyzer::*;
 pub use reporter::*;
 #[allow(unused_imports)]
