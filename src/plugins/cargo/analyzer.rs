@@ -181,7 +181,7 @@ impl BuildAnalyzer for CargoAnalyzer {
         let output = builder.execute()?;
 
         println!("Parsing output...");
-        let issues = self.parser.parse(&output);
+        let issues = self.parser.parse(&output).data_or_default_owned();
         println!("Found {} issues", issues.len());
 
         // Validate that we got valid output

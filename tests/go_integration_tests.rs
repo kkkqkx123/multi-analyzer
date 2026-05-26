@@ -53,7 +53,7 @@ fn test_go_build_output() {
 
     // Parse and generate report
     let parser = GoParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "go_build",
         "Go Build",
@@ -118,7 +118,7 @@ fn test_go_vet_output() {
 
     // Parse and generate report
     let parser = GoParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "go_vet",
         "Go Vet",
@@ -167,7 +167,7 @@ fn test_golangci_lint_output() {
 
     // Parse and generate report
     let parser = GoParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "golangci_lint",
         "Golangci-lint",
@@ -274,7 +274,7 @@ fn test_go_parser_specific_patterns() {
 
     // Test go build error format
     let build_error = "./main.go:10:5: undefined: someVariable";
-    let issues = parser.parse(build_error);
+    let issues = parser.parse(build_error).data_or_default_owned();
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].location.file_path, "./main.go");
     assert_eq!(issues[0].location.line_number, Some(10));
@@ -283,7 +283,7 @@ fn test_go_parser_specific_patterns() {
 
     // Test go vet error format
     let vet_error = "./main.go:15:10: Printf format %s has arg x of wrong type int";
-    let issues = parser.parse(vet_error);
+    let issues = parser.parse(vet_error).data_or_default_owned();
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].location.file_path, "./main.go");
     assert_eq!(issues[0].location.line_number, Some(15));
@@ -292,7 +292,7 @@ fn test_go_parser_specific_patterns() {
 
     // Test golangci-lint error format
     let lint_error = "main.go:20:3: Error return value of `fmt.Println` is not checked (errcheck)";
-    let issues = parser.parse(lint_error);
+    let issues = parser.parse(lint_error).data_or_default_owned();
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].location.file_path, "main.go");
     assert_eq!(issues[0].location.line_number, Some(20));
@@ -301,7 +301,7 @@ fn test_go_parser_specific_patterns() {
 
     // Test golangci-lint with error code
     let lint_with_code = "main.go:25:5: SA1000: invalid regular expression (staticcheck)";
-    let issues = parser.parse(lint_with_code);
+    let issues = parser.parse(lint_with_code).data_or_default_owned();
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].code, Some("[SA1000]".to_string()));
     assert_eq!(issues[0].message, "invalid regular expression");
@@ -364,7 +364,7 @@ fn test_validate_go_outputs() {
     for (filename, tool) in samples {
         let sample_path = common::samples_dir().join(filename);
         if let Ok(content) = std::fs::read_to_string(&sample_path) {
-            let issues = parser.parse(&content);
+            let issues = parser.parse(&content).data_or_default_owned();
             println!("✓ {}: Parsed {} issues from {}", tool, issues.len(), filename);
 
             // Generate report for sample

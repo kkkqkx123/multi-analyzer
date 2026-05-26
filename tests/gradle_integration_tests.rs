@@ -67,7 +67,7 @@ fn test_gradle_compile_output() {
 
     // Parses and generates reports
     let parser = GradleParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "gradle_compile",
         "Gradle Compile",
@@ -138,7 +138,7 @@ fn test_gradle_test_output() {
 
     // Parses and generates reports
     let parser = GradleParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "gradle_test",
         "Gradle Test",
@@ -174,7 +174,7 @@ fn test_validate_gradle_outputs() {
 
     // Sample Verification Compilation Errors
     let compile_output = read_sample("gradle_compile_sample");
-    let issues = parser.parse(&compile_output);
+    let issues = parser.parse(&compile_output).data_or_default_owned();
 
     // Generate report for manual review
     generate_report(
@@ -212,7 +212,7 @@ fn test_validate_gradle_outputs() {
 
     // Also test and report test sample
     let test_output = read_sample("gradle_test_sample");
-    let test_issues = parser.parse(&test_output);
+    let test_issues = parser.parse(&test_output).data_or_default_owned();
 
     generate_report(
         "gradle_test_sample",
@@ -242,7 +242,7 @@ fn test_gradle_parser_specific_patterns() {
 
     println!("=== Testing Gradle Parser Patterns ===");
     for (line, expected_level) in test_cases {
-        let issues = parser.parse(line);
+        let issues = parser.parse(line).data_or_default_owned();
         let found = !issues.is_empty();
         let status = if found { "✓" } else { "✗" };
         println!("{} Line: '{}' - found issue: {} (level: {:?})",

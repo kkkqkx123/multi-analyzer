@@ -12,12 +12,6 @@
 
 ## Issue Details (Grouped by File)
 
-### internal/config/config.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 15 | 15 | Warning | return value of os.Setenv is not checked |
-
 ### ./cmd/myapp/main.go
 
 | Line | Column | Level | Message |
@@ -30,6 +24,12 @@
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 20 | 16 | Warning | return value of os.Open is not checked |
+
+### internal/config/config.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 15 | 15 | Warning | return value of os.Setenv is not checked |
 
 ## Raw Output
 

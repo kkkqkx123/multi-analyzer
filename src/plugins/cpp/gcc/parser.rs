@@ -1,7 +1,7 @@
 //! GCC Output Parser
 //! Parses GCC compiler output
 
-use crate::core::{Issue, OutputParser};
+use crate::core::{Issue, OutputParser, ParseResult};
 use crate::plugins::cpp::parser::CppParser;
 
 pub struct GccParser {
@@ -23,7 +23,7 @@ impl Default for GccParser {
 }
 
 impl OutputParser for GccParser {
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         // Use OutputParser::parse explicitly to avoid ambiguity
         <CppParser as OutputParser>::parse(&self.inner, output)
     }

@@ -6,6 +6,7 @@ use std::process::{Command, Stdio, ExitStatus};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use std::collections::HashMap;
 
 use super::analyzer::AnalyzerError;
 
@@ -16,11 +17,9 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 /// Contains the output and success status of the command
 #[derive(Debug)]
 pub struct CommandOutput {
-    /// Standard output (available for testing and external use)
-    #[allow(dead_code)]
+    /// Standard output
     pub stdout: String,
-    /// Standard error (available for testing and external use)
-    #[allow(dead_code)]
+    /// Standard error
     pub stderr: String,
     /// Combined stdout and stderr
     pub combined: String,
@@ -38,35 +37,80 @@ impl CommandOutput {
         self.status.code()
     }
 
-    /// Get stdout output (available for testing and external use)
-    #[allow(dead_code)]
+    /// Get stdout output
     pub fn stdout(&self) -> &str {
         &self.stdout
     }
 
-    /// Get stderr output (available for testing and external use)
-    #[allow(dead_code)]
+    /// Get stderr output
     pub fn stderr(&self) -> &str {
         &self.stderr
     }
 
     /// Get combined stdout and stderr output
-    #[allow(dead_code)]
     pub fn combined(&self) -> &str {
         &self.combined
+    }
+}
+
+/// Chainable options for configuring command execution
+#[derive(Debug, Clone)]
+pub struct RunOptions {
+    /// Working directory for the command
+    pub current_dir: Option<PathBuf>,
+    /// Environment variable overrides
+    pub envs: HashMap<String, String>,
+    /// Whether to show the command being executed
+    pub verbose: bool,
+    /// Command timeout duration
+    pub timeout: Duration,
+}
+
+impl Default for RunOptions {
+    fn default() -> Self {
+        Self {
+            current_dir: None,
+            envs: HashMap::new(),
+            verbose: true,
+            timeout: DEFAULT_TIMEOUT,
+        }
+    }
+}
+
+impl RunOptions {
+    /// Set working directory
+    pub fn with_current_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.current_dir = Some(dir.into());
+        self
+    }
+
+    /// Add an environment variable
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.envs.insert(key.into(), value.into());
+        self
+    }
+
+    /// Suppress command logging
+    pub fn quiet(mut self) -> Self {
+        self.verbose = false;
+        self
+    }
+
+    /// Set timeout
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 }
 
 /// Get full path to commands (cross-platform)
 /// On Windows, executable extensions such as.cmd, .bat, and.exe are first found
 pub fn resolve_command(cmd: &str) -> Option<PathBuf> {
-    // If it is already an absolute path or contains a path separator, return directly
     let path = Path::new(cmd);
     if path.is_absolute() || path.components().count() > 1 {
         return Some(path.to_path_buf());
     }
 
-    // Use the which/where command to find
     #[cfg(windows)]
     let check_cmd = "where";
     #[cfg(not(windows))]
@@ -83,8 +127,6 @@ pub fn resolve_command(cmd: &str) -> Option<PathBuf> {
 
     #[cfg(windows)]
     {
-        // On Windows, preference is given to executables with extensions
-        // Priority: .cmd > .bat > .exe > Other
         let priority = ["cmd", "bat", "exe"];
         for ext in &priority {
             if let Some(path) = paths.iter().find(|p| {
@@ -97,7 +139,6 @@ pub fn resolve_command(cmd: &str) -> Option<PathBuf> {
         }
     }
 
-    // The default returns the first found path
     paths.into_iter().next()
 }
 
@@ -106,8 +147,7 @@ pub fn resolve_command(cmd: &str) -> Option<PathBuf> {
 pub struct CommandBuilder {
     program: String,
     args: Vec<String>,
-    verbose: bool,
-    timeout: Duration,
+    options: RunOptions,
 }
 
 impl CommandBuilder {
@@ -116,8 +156,7 @@ impl CommandBuilder {
         Self {
             program: program.into(),
             args: Vec::new(),
-            verbose: true,
-            timeout: DEFAULT_TIMEOUT,
+            options: RunOptions::default(),
         }
     }
 
@@ -141,6 +180,58 @@ impl CommandBuilder {
         self
     }
 
+    /// Set working directory
+    pub fn current_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.options.current_dir = Some(dir.into());
+        self
+    }
+
+    /// Add an environment variable
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.options.envs.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set command timeout
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.options.timeout = timeout;
+        self
+    }
+
+    /// Suppress command execution logging
+    pub fn quiet(mut self) -> Self {
+        self.options.verbose = false;
+        self
+    }
+
+    /// Apply run options to the builder
+    pub fn with_options(mut self, options: RunOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Build a std::process::Command from the builder configuration
+    pub fn build(&self) -> Command {
+        let program = resolve_command(&self.program)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| self.program.clone());
+
+        let mut cmd = Command::new(&program);
+        cmd.args(&self.args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        if let Some(dir) = &self.options.current_dir {
+            cmd.current_dir(dir);
+        }
+
+        for (key, value) in &self.options.envs {
+            cmd.env(key, value);
+        }
+
+        cmd
+    }
+
     /// Execute command and capture output (with timeout)
     /// Returns the combined stdout and stderr output
     pub fn execute(&self) -> Result<String, AnalyzerError> {
@@ -149,26 +240,35 @@ impl CommandBuilder {
     }
 
     /// Execute command and capture output with full status information
-    /// This allows callers to check if the command succeeded and handle failures appropriately
     pub fn execute_with_status(&self) -> Result<CommandOutput, AnalyzerError> {
         let program = resolve_command(&self.program)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| self.program.clone());
 
-        if self.verbose {
+        if self.options.verbose {
             println!("Running: {} {}", program, self.args.join(" "));
         }
 
         let (tx, rx) = mpsc::channel();
         let program = program.to_string();
         let args = self.args.clone();
-        let timeout = self.timeout;
+        let timeout = self.options.timeout;
+        let current_dir = self.options.current_dir.clone();
+        let envs = self.options.envs.clone();
 
         thread::spawn(move || {
             let mut cmd = Command::new(&program);
             cmd.args(&args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+
+            if let Some(dir) = &current_dir {
+                cmd.current_dir(dir);
+            }
+
+            for (key, value) in &envs {
+                cmd.env(key, value);
+            }
 
             let output = cmd.output();
             let _ = tx.send(output);
@@ -204,7 +304,6 @@ mod tests {
 
     #[test]
     fn test_resolve_command_cargo() {
-        // cargo should be able to find
         let resolved = resolve_command("cargo");
         assert!(
             resolved.is_some(),
@@ -214,8 +313,33 @@ mod tests {
 
     #[test]
     fn test_resolve_command_nonexistent() {
-        // Command that does not exist should return None
         let resolved = resolve_command("this_command_definitely_does_not_exist_12345");
         assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn test_run_options_chain() {
+        let opts = RunOptions::default()
+            .quiet()
+            .with_timeout(Duration::from_secs(60));
+        assert!(!opts.verbose);
+        assert_eq!(opts.timeout, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_command_builder_chain() {
+        let builder = CommandBuilder::new("cargo")
+            .arg("check")
+            .quiet()
+            .timeout(Duration::from_secs(120));
+        assert!(!builder.options.verbose);
+        assert_eq!(builder.args, vec!["check"]);
+    }
+
+    #[test]
+    fn test_from_exec_string() {
+        let builder = CommandBuilder::from_exec_string("cargo check --all-targets");
+        assert_eq!(builder.program, "cargo");
+        assert_eq!(builder.args, vec!["check", "--all-targets"]);
     }
 }

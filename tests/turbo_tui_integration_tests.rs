@@ -120,7 +120,7 @@ fn test_turbo_real_output() {
     
     // Parse output
     let parser = NpmParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     
     // Generate report
     generate_report(
@@ -173,7 +173,7 @@ Cached:    0 cached, 1 total
     save_raw_output("turbo_tui_sample", turbo_tui_output);
     
     let parser = NpmParser::new();
-    let issues = parser.parse(turbo_tui_output);
+    let issues = parser.parse(turbo_tui_output).data_or_default_owned();
     
     // Generate report
     generate_report(
@@ -226,7 +226,7 @@ Failed:    web#lint
     save_raw_output("turbo_stream_sample", turbo_stream_output);
     
     let parser = NpmParser::new();
-    let issues = parser.parse(turbo_stream_output);
+    let issues = parser.parse(turbo_stream_output).data_or_default_owned();
     
     // Generate report
     generate_report(
@@ -261,7 +261,7 @@ app:lint:     10:5  warning  Unexpected any                                     
     save_raw_output("turbo_prefix_test", output_with_prefix);
     
     let parser = NpmParser::new();
-    let issues = parser.parse(output_with_prefix);
+    let issues = parser.parse(output_with_prefix).data_or_default_owned();
     
     // Generate report
     generate_report(
@@ -321,7 +321,7 @@ D:\project\packages\storage\src\json\base-json-storage.ts
     save_raw_output("turbo_tui_borders", turbo_tui_with_borders);
     
     let parser = NpmParser::new();
-    let issues = parser.parse(turbo_tui_with_borders);
+    let issues = parser.parse(turbo_tui_with_borders).data_or_default_owned();
     
     // Generate report
     generate_report(
@@ -383,7 +383,7 @@ D:\project\packages\script-executors\src\core\types.ts
     save_raw_output("turbo_scoped_packages", turbo_scoped_output);
     
     let parser = NpmParser::new();
-    let issues = parser.parse(turbo_scoped_output);
+    let issues = parser.parse(turbo_scoped_output).data_or_default_owned();
     
     // Generate report
     generate_report(

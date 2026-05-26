@@ -42,7 +42,7 @@ fn test_mypy_basic_output() {
 
     // Parse and generate report
     let parser = MypyParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "mypy_basic",
         "Mypy Basic",
@@ -109,7 +109,7 @@ fn test_mypy_strict_output() {
 
     // Parse and generate report
     let parser = MypyParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "mypy_strict",
         "Mypy Strict",
@@ -157,7 +157,7 @@ fn test_mypy_specific_file() {
 
     // Parses and generates reports
     let parser = MypyParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "mypy_specific_file",
         "Mypy Specific File",
@@ -209,7 +209,7 @@ fn test_mypy_with_ignore_missing_imports() {
 
     // Parses and generates reports
     let parser = MypyParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "mypy_ignore_imports",
         "Mypy Ignore Imports",

@@ -53,7 +53,7 @@ fn test_maven_compile_output() {
 
     // Parses and generates reports
     let parser = MavenParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "maven_compile",
         "Maven Compile",
@@ -122,7 +122,7 @@ fn test_maven_test_output() {
 
     // Parses and generates reports
     let parser = MavenParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "maven_test",
         "Maven Test",
@@ -158,7 +158,7 @@ fn test_validate_maven_outputs() {
 
     // Sample Verification Compilation Errors
     let compile_output = read_sample("maven_compile_sample");
-    let issues = parser.parse(&compile_output);
+    let issues = parser.parse(&compile_output).data_or_default_owned();
 
     println!("=== Validating Maven Compile Sample ===");
     println!("Found {} issues in sample output", issues.len());
@@ -202,7 +202,7 @@ fn test_maven_parser_specific_patterns() {
 
     println!("=== Testing Maven Parser Patterns ===");
     for (line, expected_level) in test_cases {
-        let issues = parser.parse(line);
+        let issues = parser.parse(line).data_or_default_owned();
         let found = !issues.is_empty();
         let status = if found { "✓" } else { "✗" };
         println!("{} Line: '{}' - found issue: {} (level: {:?})",

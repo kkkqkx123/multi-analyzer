@@ -2,7 +2,7 @@
 //! Parsing the output of npm/pnpm/yarn lint and type-check
 
 use crate::core::{
-    BaseParser, Issue, IssueLevel, Location, OutputParser, ParsedTestOutput,
+    strip_ansi, BaseParser, Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput,
     TestCase, TestOutputParser, TestStatus, TestSummary,
 };
 
@@ -156,50 +156,7 @@ impl NpmParser {
 
     /// Remove ANSI escape codes from output
     fn strip_ansi_codes(&self, text: &str) -> String {
-        let mut result = String::new();
-        let mut chars = text.chars().peekable();
-        
-        while let Some(ch) = chars.next() {
-            if ch == '\x1b' {
-                // Start of ANSI escape sequence
-                if chars.peek() == Some(&'[') {
-                    // CSI sequence: ESC [ ... letter
-                    chars.next(); // consume '['
-                    // Skip until we find a letter (end of sequence)
-                    while let Some(&next_ch) = chars.peek() {
-                        chars.next();
-                        if next_ch.is_ascii_alphabetic() {
-                            break;
-                        }
-                    }
-                } else if chars.peek() == Some(&']') {
-                    // OSC sequence: ESC ] ... BEL or ESC \
-                    chars.next(); // consume ']'
-                    while let Some(&next_ch) = chars.peek() {
-                        chars.next();
-                        if next_ch == '\x07' || next_ch == '\x1b' {
-                            if next_ch == '\x1b' && chars.peek() == Some(&'\\') {
-                                chars.next();
-                            }
-                            break;
-                        }
-                    }
-                }
-                // Skip other escape sequences (like ESC ( ), ESC ) )
-                else if let Some(&next_ch) = chars.peek() {
-                    if next_ch == '(' || next_ch == ')' || next_ch == '#' {
-                        chars.next();
-                        if let Some(&_final_ch) = chars.peek() {
-                            chars.next();
-                        }
-                    }
-                }
-            } else {
-                result.push(ch);
-            }
-        }
-        
-        result
+        strip_ansi(text)
     }
 
     /// Extract package name and clean content from a line with turbo/pnpm prefix
@@ -325,7 +282,7 @@ impl NpmParser {
         processed_lines
             .into_iter()
             .filter_map(|line| {
-                let (package, content) = self.extract_package_and_content(&line);
+                let (_package, content) = self.extract_package_and_content(&line);
                 let trimmed = content.trim();
                 
                 // Skip empty lines
@@ -708,7 +665,7 @@ impl Default for NpmParser {
 
 impl OutputParser for NpmParser {
     // Custom parse implementation for NPM output
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         // Pre-process: strip turbo prefixes from lines with package information
         // Turbo format: "web:lint:    4:7   error    ..."
         let lines_with_packages = self.strip_turbo_prefixes_with_package(output);
@@ -794,7 +751,7 @@ impl OutputParser for NpmParser {
             i += 1;
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 
@@ -803,7 +760,7 @@ impl TestOutputParser for NpmParser {
         let mut result = ParsedTestOutput::new();
 
         // 1. Reuse of existing logic to resolve compilation/type-checking issues
-        result.compile_issues = <Self as OutputParser>::parse(self, output);
+        result.compile_issues = <Self as OutputParser>::parse(self, output).data_or_default_owned();
 
         // 2. Parsing test execution results
         let lines: Vec<&str> = output.lines().collect();
@@ -1194,7 +1151,7 @@ mod tests {
 web:lint:    4:7   error    'unusedVariable' is assigned a value but never used  @typescript-eslint/no-unused-vars
 web:lint:    7:24  warning  'unusedParam' is defined but never used              @typescript-eslint/no-unused-vars"#;
         
-        let issues = parser.parse(output);
+        let issues = parser.parse(output).data_or_default_owned();
         assert_eq!(issues.len(), 2, "Should parse 2 issues with turbo prefix");
         
         let first = &issues[0];
@@ -1224,7 +1181,7 @@ D:\project\packages\storage\src\json\base-json-storage.ts
 ✖ 7 problems (0 errors, 7 warnings)
 └─ @graph-agent/storage#lint ──"#;
         
-        let issues = parser.parse(output);
+        let issues = parser.parse(output).data_or_default_owned();
         assert_eq!(issues.len(), 2, "Should parse 2 ESLint issues from turbo TUI output, found {}", issues.len());
         
         let first = &issues[0];
@@ -1333,7 +1290,7 @@ D:\project\packages\storage\src\json\base-json-storage.ts
 @graph-agent/common-utils#lint: D:\project\packages\common-utils\src\utils.ts
 @graph-agent/common-utils#lint:    10:5  error  Unexpected any  @typescript-eslint/no-explicit-any"#;
         
-        let issues = parser.parse(output);
+        let issues = parser.parse(output).data_or_default_owned();
         assert_eq!(issues.len(), 2, "Should parse 2 issues from different packages");
         
         // Verify first issue has package information

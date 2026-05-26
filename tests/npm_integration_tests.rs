@@ -69,7 +69,7 @@ fn test_npm_eslint_output() {
 
     // Parse and generate report
     let parser = NpmParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "npm_eslint",
         "ESLint",
@@ -128,7 +128,7 @@ fn test_npm_typecheck_output() {
 
     // Parse and generate report
     let parser = NpmParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "npm_typecheck",
         "TypeScript Type Check",
@@ -178,7 +178,7 @@ fn test_npm_audit_output() {
 
     // Parse and generate report
     let parser = NpmParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
     generate_report(
         "npm_audit",
         "NPM Audit",

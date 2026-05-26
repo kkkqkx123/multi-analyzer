@@ -2,7 +2,7 @@
 //! Parsing the output of go build, go vet, go test, golangci-lint
 
 use crate::core::{
-    Issue, IssueLevel, Location, OutputParser, ParsedTestOutput, TestCase,
+    Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase,
     TestOutputParser, TestStatus, TestSummary,
 };
 
@@ -400,7 +400,7 @@ impl Default for GoParser {
 }
 
 impl OutputParser for GoParser {
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let mut issues = Vec::new();
         let lines: Vec<&str> = output.lines().collect();
 
@@ -417,7 +417,7 @@ impl OutputParser for GoParser {
             }
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 

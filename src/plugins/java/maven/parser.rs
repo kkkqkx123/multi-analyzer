@@ -1,7 +1,7 @@
 //! Maven Output Parser
 //Parsing the output of Maven compile/test Parsing the output of Maven compile/test
 
-use crate::core::{Issue, IssueLevel, Location, OutputParser};
+use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult};
 
 pub struct MavenParser;
 
@@ -163,7 +163,7 @@ impl Default for MavenParser {
 }
 
 impl OutputParser for MavenParser {
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let lines: Vec<String> = output.lines().map(|s| s.to_string()).collect();
         let mut issues = Vec::new();
         let mut i = 0;
@@ -179,7 +179,7 @@ impl OutputParser for MavenParser {
             }
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 

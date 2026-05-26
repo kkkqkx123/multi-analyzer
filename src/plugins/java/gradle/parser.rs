@@ -1,7 +1,7 @@
 //! Gradle Output Parser
 //! Parsing the output of Gradle compile/test
 
-use crate::core::{Issue, IssueLevel, Location, OutputParser};
+use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult};
 
 pub struct GradleParser;
 
@@ -139,7 +139,7 @@ impl Default for GradleParser {
 }
 
 impl OutputParser for GradleParser {
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let lines: Vec<String> = output.lines().map(|s| s.to_string()).collect();
         let mut issues = Vec::new();
         let mut i = 0;
@@ -155,7 +155,7 @@ impl OutputParser for GradleParser {
             }
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 

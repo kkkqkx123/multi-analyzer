@@ -1,7 +1,7 @@
 //! Mypy Output Parser
 //! Parsing the output of mypy
 
-use crate::core::{BaseParser, Issue, OutputParser};
+use crate::core::{BaseParser, Issue, OutputParser, ParseResult};
 
 pub struct MypyParser {
     base: BaseParser,
@@ -35,7 +35,7 @@ impl Default for MypyParser {
 
 impl OutputParser for MypyParser {
     // Custom parse implementation for Mypy output
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let lines: Vec<String> = output.lines().map(|s| s.to_string()).collect();
         let mut issues = Vec::new();
 
@@ -45,7 +45,7 @@ impl OutputParser for MypyParser {
             }
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 

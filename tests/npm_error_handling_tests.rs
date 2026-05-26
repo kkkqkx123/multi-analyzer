@@ -138,7 +138,7 @@ src/index.js:2:5: warning: Unused variable 'foo' no-unused-vars
 "#;
     
     let parser = NpmParser::new();
-    let issues = parser.parse(eslint_output);
+    let issues = parser.parse(eslint_output).data_or_default_owned();
     
     // Should parse 2 issues
     assert_eq!(issues.len(), 2, "Should parse 2 issues from ESLint output");
@@ -164,7 +164,7 @@ Please check that the name of the config is correct.
 "#;
     
     let parser = NpmParser::new();
-    let issues = parser.parse(config_error_output);
+    let issues = parser.parse(config_error_output).data_or_default_owned();
     
     // Should have 0 issues since config errors aren't in ESLint format
     assert_eq!(issues.len(), 0, "Should have 0 issues for config errors");
@@ -219,7 +219,7 @@ src/utils.ts(5,3): error TS2345: Argument of type 'any' is not assignable to par
 "#;
     
     let parser = NpmParser::new();
-    let issues = parser.parse(tsc_output);
+    let issues = parser.parse(tsc_output).data_or_default_owned();
     
     // Should parse 2 TypeScript errors
     assert_eq!(issues.len(), 2, "Should parse 2 TypeScript errors");
@@ -249,7 +249,7 @@ found 0 vulnerabilities
 "#;
     
     let parser = NpmParser::new();
-    let issues = parser.parse(audit_output);
+    let issues = parser.parse(audit_output).data_or_default_owned();
     
     // Audit errors should be parsed
     assert!(issues.len() > 0, "Should parse npm audit errors");
@@ -304,7 +304,7 @@ D:\项目\agent\graph-agent\apps\cli-app\src\commands\agent\utils.ts
 "#;
     
     let parser = NpmParser::new();
-    let issues = parser.parse(eslint_verbose_output);
+    let issues = parser.parse(eslint_verbose_output).data_or_default_owned();
     
     // Should parse all 6 issues
     assert_eq!(issues.len(), 6, "Should parse 6 issues from ESLint verbose output");
@@ -339,7 +339,7 @@ fn test_npm_parser_eslint_message_extraction() {
 "#;
     
     let parser = NpmParser::new();
-    let issues = parser.parse(eslint_output);
+    let issues = parser.parse(eslint_output).data_or_default_owned();
     
     assert_eq!(issues.len(), 2, "Should parse 2 issues");
     

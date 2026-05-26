@@ -65,7 +65,7 @@ fn test_cmake_configure_with_msvc() {
 
     // Parse the output
     let parser = CMakeParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     // Generate report
     generate_report(
@@ -140,7 +140,7 @@ fn test_cmake_build_with_msvc() {
 
     // Parse the output with CMakeParser (which includes compiler output parsing)
     let parser = CMakeParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     // Generate report
     generate_report(
@@ -218,7 +218,7 @@ fn test_msvc_compiler_output_parsing() {
 
     // Parse with MSVC parser
     let parser = CppParser::with_msvc();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     // Generate report
     generate_report(
@@ -305,7 +305,7 @@ fn test_clang_compiler_output_parsing() {
 
     // Parse with Clang parser
     let parser = CppParser::with_clang();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     // Generate report
     generate_report(

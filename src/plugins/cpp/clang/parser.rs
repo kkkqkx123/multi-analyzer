@@ -1,7 +1,7 @@
 //! Clang Output Parser
 //! Parses Clang compiler output
 
-use crate::core::{Issue, OutputParser};
+use crate::core::{Issue, OutputParser, ParseResult};
 use crate::plugins::cpp::parser::CppParser;
 
 pub struct ClangParser {
@@ -23,7 +23,7 @@ impl Default for ClangParser {
 }
 
 impl OutputParser for ClangParser {
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         // Use OutputParser::parse explicitly to avoid ambiguity
         <CppParser as OutputParser>::parse(&self.inner, output)
     }

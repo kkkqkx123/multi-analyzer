@@ -113,7 +113,7 @@ impl BuildAnalyzer for ClangAnalyzer {
         let output = builder.execute()?;
 
         println!("Parsing output...");
-        let issues = self.parser.parse(&output);
+        let issues = self.parser.parse(&output).data_or_default_owned();
         println!("Found {} issues", issues.len());
 
         let result = AnalysisResult::from_issues(issues);

@@ -49,7 +49,7 @@ fn test_gcc_basic_output() {
 
     // Parse and generate report
     let parser = CppParser::new(CompilerType::Gcc);
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     if !issues.is_empty() {
         generate_report(
@@ -103,7 +103,7 @@ fn test_clang_basic_output() {
     save_raw_output("clang_basic", &output);
 
     let parser = CppParser::new(CompilerType::Clang);
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     if !issues.is_empty() {
         generate_report(
@@ -158,7 +158,7 @@ fn test_cmake_configure_output() {
     save_raw_output("cmake_configure", &output);
 
     let parser = CMakeParser::new();
-    let issues = parser.parse(&output);
+    let issues = parser.parse(&output).data_or_default_owned();
 
     if !issues.is_empty() {
         generate_report(
@@ -245,7 +245,7 @@ int main() {
             save_raw_output("gcc_warnings", &stderr);
 
             let parser = CppParser::new(CompilerType::Gcc);
-            let issues = parser.parse(&stderr);
+            let issues = parser.parse(&stderr).data_or_default_owned();
 
             // Should detect unused variable warning
             let has_unused_warning = issues.iter().any(|i| {

@@ -3,6 +3,74 @@
 
 use super::types::{Issue, IssueLevel, Location};
 
+/// Parse result with degradation tier.
+/// Inspired by RTK's three-tier fallback strategy:
+/// - Full: successful parse with complete structured data
+/// - Degraded: partial parse with warnings (e.g. some lines could not be parsed)
+/// - Passthrough: parsing failed entirely, returning truncated raw text
+#[derive(Debug)]
+pub enum ParseResult<T> {
+    Full(T),
+    Degraded(T, Vec<String>),
+    Passthrough(String),
+}
+
+impl<T> ParseResult<T> {
+    pub fn is_full(&self) -> bool {
+        matches!(self, ParseResult::Full(_))
+    }
+
+    pub fn tier(&self) -> u8 {
+        match self {
+            ParseResult::Full(_) => 1,
+            ParseResult::Degraded(_, _) => 2,
+            ParseResult::Passthrough(_) => 3,
+        }
+    }
+
+    /// Extract inner data if available (Full or Degraded), fallback to default.
+    pub fn data_or_default(self, default: T) -> T {
+        match self {
+            ParseResult::Full(data) | ParseResult::Degraded(data, _) => data,
+            ParseResult::Passthrough(_) => default,
+        }
+    }
+
+    /// Extract inner data, returning None for Passthrough.
+    pub fn data(self) -> Option<T> {
+        match self {
+            ParseResult::Full(data) | ParseResult::Degraded(data, _) => Some(data),
+            ParseResult::Passthrough(_) => None,
+        }
+    }
+
+    pub fn map<U, F>(self, f: F) -> ParseResult<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            ParseResult::Full(data) => ParseResult::Full(f(data)),
+            ParseResult::Degraded(data, warnings) => ParseResult::Degraded(f(data), warnings),
+            ParseResult::Passthrough(raw) => ParseResult::Passthrough(raw),
+        }
+    }
+
+    /// Get degradation warnings (empty for Full and Passthrough).
+    pub fn warnings(&self) -> &[String] {
+        match self {
+            ParseResult::Degraded(_, warnings) => warnings,
+            _ => &[],
+        }
+    }
+}
+
+impl<T: Default> ParseResult<T> {
+    /// Extract inner data with default if Passthrough.
+    pub fn data_or_default_owned(self) -> T {
+        self.data_or_default(T::default())
+    }
+}
+
 /// Output parser trait
 /// Implement this trait to support the new technology stack output format
 ///
@@ -16,7 +84,7 @@ pub trait OutputParser: Send + Sync {
     ///
     /// Default implementation uses streaming parsing via `is_issue_start`
     /// and `parse_issue`. Override this method for custom parsing logic.
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let lines: Vec<String> = output.lines().map(String::from).collect();
         let mut issues = Vec::new();
         let mut i = 0;
@@ -37,7 +105,7 @@ pub trait OutputParser: Send + Sync {
             }
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 
     /// Check if a row is the starting row of the problem

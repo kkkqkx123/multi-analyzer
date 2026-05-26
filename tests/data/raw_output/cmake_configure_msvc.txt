@@ -9,6 +9,6 @@
 -- Check for working CXX compiler: D:/softwares/Visual Studio/VC/Tools/MSVC/14.43.34808/bin/Hostx64/x64/cl.exe - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
--- Configuring done (6.5s)
--- Generating done (0.0s)
+-- Configuring done (3.7s)
+-- Generating done (0.1s)
 -- Build files have been written to: D:/项目/cli/analyzer/tests/data/fixtures/cpp-cmake-project/build_test

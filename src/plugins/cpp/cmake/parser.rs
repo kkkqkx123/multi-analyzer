@@ -2,7 +2,7 @@
 //! Parses CMake configuration and build output
 
 use regex::Regex;
-use crate::core::{Issue, IssueLevel, Location, OutputParser};
+use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult};
 use crate::plugins::cpp::parser::{CppParser, CompilerType};
 
 pub struct CMakeParser {
@@ -142,7 +142,7 @@ impl Default for CMakeParser {
 }
 
 impl OutputParser for CMakeParser {
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let mut issues = Vec::new();
 
         // Parse CMake configuration errors
@@ -151,9 +151,10 @@ impl OutputParser for CMakeParser {
         // Parse compiler errors from build output
         let compiler_type = self.detect_compiler_type(output);
         let cpp_parser = CppParser::new(compiler_type);
-        issues.extend(<CppParser as OutputParser>::parse(&cpp_parser, output));
+        let cpp_result = <CppParser as OutputParser>::parse(&cpp_parser, output);
+        issues.extend(cpp_result.data_or_default_owned());
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 

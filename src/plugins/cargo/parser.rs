@@ -2,7 +2,7 @@
 //Parsing the output of cargo check/clippy/test Parsing output from cargo check/clippy/test
 
 use crate::core::{
-    BaseParser, Issue, IssueLevel, Location, OutputParser, ParsedTestOutput,
+    BaseParser, Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput,
     TestCase, TestOutputParser, TestStatus, TestSummary,
 };
 
@@ -160,7 +160,7 @@ impl Default for CargoParser {
 
 impl OutputParser for CargoParser {
     // Custom parse implementation for Cargo output
-    fn parse(&self, output: &str) -> Vec<Issue> {
+    fn parse(&self, output: &str) -> ParseResult<Vec<Issue>> {
         let lines: Vec<String> = output.lines().map(|s| s.to_string()).collect();
         let mut issues = Vec::new();
         let mut i = 0;
@@ -179,7 +179,7 @@ impl OutputParser for CargoParser {
             }
         }
 
-        issues
+        ParseResult::Full(issues)
     }
 }
 
@@ -188,7 +188,7 @@ impl TestOutputParser for CargoParser {
         let mut result = ParsedTestOutput::new();
 
         // 1. Reuse of existing logic to resolve compilation issues
-        result.compile_issues = <Self as OutputParser>::parse(self, output);
+        result.compile_issues = <Self as OutputParser>::parse(self, output).data_or_default_owned();
 
         // 2. Parsing test execution results
         let lines: Vec<&str> = output.lines().collect();

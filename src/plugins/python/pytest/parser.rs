@@ -2,7 +2,7 @@
 //! Parsing the output of pytest
 
 use crate::core::{
-    Issue, Location, OutputParser, ParsedTestOutput, TestCase,
+    Issue, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase,
     TestOutputParser, TestStatus, TestSummary,
 };
 
@@ -258,8 +258,8 @@ impl Default for PytestParser {
 impl OutputParser for PytestParser {
     // Pytest doesn't typically produce compilation-style issues
     // It produces test failures which are handled by TestOutputParser
-    fn parse(&self, _output: &str) -> Vec<Issue> {
-        Vec::new()
+    fn parse(&self, _output: &str) -> ParseResult<Vec<Issue>> {
+        ParseResult::Full(Vec::new())
     }
 }
 

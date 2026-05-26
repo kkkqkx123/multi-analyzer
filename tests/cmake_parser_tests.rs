@@ -20,7 +20,7 @@ fn read_sample(name: &str) -> String {
 fn test_cmake_parser_basic() {
     let content = read_sample("cmake_basic_sample");
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, &content);
+    let issues = OutputParser::parse(&parser, &content).data_or_default_owned();
 
     // Should parse both CMake errors/warnings and compiler errors
     assert!(!issues.is_empty(), "Should parse issues from CMake output");
@@ -55,7 +55,7 @@ CMake Error at CMakeLists.txt:10 (add_executable):
 "#;
 
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, output);
+    let issues = OutputParser::parse(&parser, output).data_or_default_owned();
 
     assert_eq!(issues.len(), 1, "Should parse exactly 1 CMake error");
 
@@ -78,7 +78,7 @@ CMake Warning at cmake/FindPackage.cmake:25 (find_package):
 "#;
 
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, output);
+    let issues = OutputParser::parse(&parser, output).data_or_default_owned();
 
     assert_eq!(issues.len(), 1, "Should parse exactly 1 CMake warning");
 
@@ -105,7 +105,7 @@ src/utils.cpp:25:12: warning: unused variable 'tmp' [-Wunused-variable]
 "#;
 
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, output);
+    let issues = OutputParser::parse(&parser, output).data_or_default_owned();
 
     assert_eq!(issues.len(), 2, "Should parse 2 compiler issues");
 
@@ -127,7 +127,7 @@ src/utils.cpp:25:12: warning: unused variable 'tmp' [-Wunused-variable]
 #[test]
 fn test_empty_output() {
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, "");
+    let issues = OutputParser::parse(&parser, "").data_or_default_owned();
     assert!(issues.is_empty(), "Empty output should produce no issues");
 
     println!("✓ Empty output handling works correctly");
@@ -142,7 +142,7 @@ CMake Error at CMakeLists.txt:15 (target_link_libraries):
 "#;
 
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, output);
+    let issues = OutputParser::parse(&parser, output).data_or_default_owned();
 
     assert_eq!(issues.len(), 1);
     let issue = &issues[0];
@@ -166,7 +166,7 @@ CMake Warning at cmake/FindBoost.cmake:42 (find_package):
 "#;
 
     let parser = CMakeParser::new();
-    let issues = OutputParser::parse(&parser, output);
+    let issues = OutputParser::parse(&parser, output).data_or_default_owned();
 
     assert_eq!(issues.len(), 1);
     let issue = &issues[0];
