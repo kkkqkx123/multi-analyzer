@@ -2,8 +2,8 @@
 //! Run mypy commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    TechStack,
+    run_analyzer, AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
+    OutputParser, TechStack,
 };
 
 use super::parser::MypyParser;
@@ -20,7 +20,11 @@ impl MypyAnalyzer {
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("--show-column-numbers .");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("--show-column-numbers .");
         CommandBuilder::from_exec_string(&format!("mypy {}", command_str))
     }
 }
@@ -41,22 +45,10 @@ impl BuildAnalyzer for MypyAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        use crate::core::run_analysis_pipeline;
-        use crate::core::stream::StageResult;
-
         let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        match run_analysis_pipeline(&self.parser, &output, options) {
-            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
-                println!("Found {} issues", result.total_issues);
-                Ok(result)
-            }
-            StageResult::Failed(warnings) => {
-                Err(AnalyzerError::ParseError(warnings.join("; ")))
-            }
-        }
+        let result = run_analyzer(&builder, &self.parser, options)?;
+        println!("Found {} issues", result.total_issues);
+        Ok(result)
     }
 
     fn parser(&self) -> &dyn OutputParser {

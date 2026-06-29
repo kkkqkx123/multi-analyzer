@@ -27,6 +27,8 @@ pub fn create_registry() -> PluginRegistry {
     // Registering the Python Analyzers
     registry.register(Box::new(python::MypyAnalyzer::new()));
     registry.register(Box::new(python::PytestAnalyzer::new()));
+    registry.register(Box::new(python::RuffAnalyzer::new()));
+    registry.register(Box::new(python::BlackAnalyzer::new()));
 
     // Registering the Java Analyzers
     registry.register(Box::new(java::MavenAnalyzer::new()));
@@ -45,6 +47,7 @@ pub fn create_registry() -> PluginRegistry {
     registry.register(Box::new(cpp::CMakeAnalyzer::new()));
     registry.register(Box::new(cpp::GccAnalyzer::new()));
     registry.register(Box::new(cpp::ClangAnalyzer::new()));
+    registry.register(Box::new(cpp::ClangFormatAnalyzer::new()));
     registry.register(Box::new(cpp::MsvcAnalyzer::new()));
 
     registry

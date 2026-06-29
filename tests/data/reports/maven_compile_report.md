@@ -12,17 +12,6 @@
 
 ## Issue Details (Grouped by File)
 
-### D:\project\test\fixtures\maven-project\src\main\java\com\example\Broken.java
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 5 | 1 | Error | class Broken is public, should be declared in a file named Broken.java |
-| 8 | 9 | Error | cannot find symbol |
-| 12 | 16 | Error | cannot find symbol |
-| 5 | 1 | Error | class Broken is public, should be declared in a file named Broken.java |
-| 8 | 9 | Error | cannot find symbol |
-| 12 | 16 | Error | cannot find symbol |
-
 ### D:\project\test\fixtures\maven-project\src\main\java\com\example\Utils.java
 
 | Line | Column | Level | Message |
@@ -54,6 +43,17 @@
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 18 | 9 | Warning | [unchecked] unchecked conversion |
+
+### D:\project\test\fixtures\maven-project\src\main\java\com\example\Broken.java
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 5 | 1 | Error | class Broken is public, should be declared in a file named Broken.java |
+| 8 | 9 | Error | cannot find symbol |
+| 12 | 16 | Error | cannot find symbol |
+| 5 | 1 | Error | class Broken is public, should be declared in a file named Broken.java |
+| 8 | 9 | Error | cannot find symbol |
+| 12 | 16 | Error | cannot find symbol |
 
 ## Raw Output
 

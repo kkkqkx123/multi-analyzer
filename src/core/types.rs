@@ -142,7 +142,10 @@ impl AnalysisResult {
             .push(issue.clone());
 
         // Statistics by package
-        let package_key = issue.package.clone().unwrap_or_else(|| "unknown".to_string());
+        let package_key = issue
+            .package
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
         self.issues_by_package
             .entry(package_key)
             .or_default()
@@ -180,20 +183,30 @@ impl AnalysisResult {
 
     /// Get total error count
     pub fn error_count(&self) -> usize {
-        self.issues_by_level.get(&IssueLevel::Error).copied().unwrap_or(0)
+        self.issues_by_level
+            .get(&IssueLevel::Error)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Get top N most frequent error codes
     pub fn top_error_codes(&self, n: usize) -> Vec<(String, usize)> {
-        let mut codes: Vec<_> = self.issues_by_code.iter().map(|(k, v)| (k.clone(), *v)).collect();
-        codes.sort_by(|a, b| b.1.cmp(&a.1));
+        let mut codes: Vec<_> = self
+            .issues_by_code
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        codes.sort_by_key(|b| std::cmp::Reverse(b.1));
         codes.truncate(n);
         codes
     }
 
     /// Get total warning count
     pub fn warning_count(&self) -> usize {
-        self.issues_by_level.get(&IssueLevel::Warning).copied().unwrap_or(0)
+        self.issues_by_level
+            .get(&IssueLevel::Warning)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Filter self based on AnalyzeOptions (shared utility for all plugin analyzers).
@@ -285,25 +298,20 @@ pub struct TestSummary {
     pub failed: usize,
     pub ignored: usize,
     /// Number of measured tests
-    #[allow(dead_code)]
     pub measured: usize,
     /// Number of filtered tests
-    #[allow(dead_code)]
     pub filtered: usize,
     /// Execution time in seconds (available for external use)
-    #[allow(dead_code)]
     pub execution_time: Option<f64>,
 }
 
 impl TestSummary {
     /// Get execution time in seconds if available (available for external use)
-    #[allow(dead_code)]
     pub fn execution_time(&self) -> Option<f64> {
         self.execution_time
     }
 
     /// Get execution time formatted as string (available for external use)
-    #[allow(dead_code)]
     pub fn execution_time_formatted(&self) -> String {
         match self.execution_time {
             Some(time) => format!("{:.2}s", time),
@@ -338,13 +346,11 @@ impl TestAnalysisResult {
     }
 
     /// Check if all tests passed (no failures and no compile issues)
-    #[allow(dead_code)]
     pub fn all_passed(&self) -> bool {
         self.failed_tests.is_empty() && self.compile_result.total_issues == 0
     }
 
     /// Get total test count
-    #[allow(dead_code)]
     pub fn total_tests(&self) -> usize {
         self.passed_tests.len() + self.failed_tests.len() + self.ignored_tests.len()
     }
@@ -354,6 +360,7 @@ impl TestAnalysisResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TechStack {
     Cargo,
+    Nextest,
     Maven,
     Gradle,
     Npm,
@@ -366,9 +373,12 @@ pub enum TechStack {
     Dotnet,
     Rubocop,
     Rspec,
+    Ruff,
+    Black,
     CMake,
     Gcc,
     Clang,
+    ClangFormat,
     Msvc,
 }
 
@@ -376,6 +386,7 @@ impl TechStack {
     pub fn as_str(&self) -> &'static str {
         match self {
             TechStack::Cargo => "cargo",
+            TechStack::Nextest => "cargo-nextest",
             TechStack::Maven => "maven",
             TechStack::Gradle => "gradle",
             TechStack::Npm => "npm",
@@ -388,9 +399,12 @@ impl TechStack {
             TechStack::Dotnet => "dotnet",
             TechStack::Rubocop => "rubocop",
             TechStack::Rspec => "rspec",
+            TechStack::Ruff => "ruff",
+            TechStack::Black => "black",
             TechStack::CMake => "cmake",
             TechStack::Gcc => "gcc",
             TechStack::Clang => "clang",
+            TechStack::ClangFormat => "clang-format",
             TechStack::Msvc => "msvc",
         }
     }
@@ -402,6 +416,7 @@ impl std::str::FromStr for TechStack {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "cargo" | "rust" => Ok(TechStack::Cargo),
+            "cargo-nextest" | "nextest" => Ok(TechStack::Nextest),
             "maven" | "mvn" => Ok(TechStack::Maven),
             "gradle" | "gradlew" => Ok(TechStack::Gradle),
             "npm" | "node" => Ok(TechStack::Npm),
@@ -414,9 +429,12 @@ impl std::str::FromStr for TechStack {
             "dotnet" | "msbuild" | "csharp" => Ok(TechStack::Dotnet),
             "rubocop" | "ruby" | "rails" => Ok(TechStack::Rubocop),
             "rspec" => Ok(TechStack::Rspec),
+            "ruff" | "python-lint" => Ok(TechStack::Ruff),
+            "black" => Ok(TechStack::Black),
             "cmake" | "cmake-build" => Ok(TechStack::CMake),
             "gcc" | "g++" => Ok(TechStack::Gcc),
             "clang" | "clang++" => Ok(TechStack::Clang),
+            "clang-format" => Ok(TechStack::ClangFormat),
             "msvc" | "cl" => Ok(TechStack::Msvc),
             _ => Err(format!("Unknown tech stack: {}", s)),
         }
@@ -426,13 +444,13 @@ impl std::str::FromStr for TechStack {
 /// Command category for grouping and organization
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandCategory {
-    Check,      // Syntax and type checking
-    Lint,       // Code linting
-    Test,       // Test execution
-    Audit,      // Security audit
-    Build,      // Build compilation
-    Format,     // Code formatting
-    Custom,     // User-defined
+    Check,  // Syntax and type checking
+    Lint,   // Code linting
+    Test,   // Test execution
+    Audit,  // Security audit
+    Build,  // Build compilation
+    Format, // Code formatting
+    Custom, // User-defined
 }
 
 /// Subcommand is now a simple string wrapper for full command flexibility
@@ -522,16 +540,14 @@ pub struct AnalyzeOptions {
     pub strip_ansi: bool,
     pub strip_tui_frames: bool,
     pub output_file: Option<String>,
+    /// Output to stdout only, do not write to file
+    pub stdout_only: bool,
     /// Verbosity level
     pub verbosity: Verbosity,
     // C++ related options
-    #[allow(dead_code)]
     pub source_dir: Option<String>,
-    #[allow(dead_code)]
     pub build_dir: Option<String>,
-    #[allow(dead_code)]
     pub cmake_generator: Option<String>,
-    #[allow(dead_code)]
     pub target: Option<String>,
     pub target_files: Vec<String>,
     pub include_paths: Vec<String>,
@@ -540,6 +556,8 @@ pub struct AnalyzeOptions {
     pub json_output: bool,
     /// Report output format: markdown, json, or html
     pub report_format: ReportFormat,
+    /// Enable success short-circuit: when no issues found, output a single-line confirmation
+    pub success_short_circuit: bool,
 
     // === Cargo Workspace Support ===
     /// --workspace
@@ -578,33 +596,39 @@ pub struct AnalyzeOptions {
     pub all_features: bool,
     /// --no-default-features
     pub no_default_features: bool,
+
+    // === Limits (from config) ===
+    /// Limits for grep, status, passthrough, etc.
+    pub limits: crate::config::modules::LimitsConfig,
 }
 
 impl AnalyzeOptions {
     /// Seed AnalyzeOptions from configuration file.
     /// CLI args should override these values after calling this.
     pub fn from_config(config: &crate::config::AppConfig) -> Self {
-        let mut options = AnalyzeOptions::default();
-
-        options.report_format = match config.report.format.as_str() {
-            "json" => ReportFormat::Json,
-            "html" => ReportFormat::Html,
-            _ => ReportFormat::Markdown,
-        };
-        options.verbosity = match config.report.verbosity.as_str() {
-            "minimal" => Verbosity::Minimal,
-            "verbose" => Verbosity::Verbose,
-            _ => Verbosity::Normal,
-        };
-
-        options.strip_ansi = config.filter.strip_ansi;
-        options.strip_tui_frames = config.filter.strip_tui_frames;
-        options.max_output_lines = config.filter.max_lines;
-        options.max_line_length = config.filter.max_line_length;
-        options.noise_patterns = config.filter.noise_patterns.clone();
-        options.keep_patterns = config.filter.keep_patterns.clone();
-
-        options
+        AnalyzeOptions {
+            report_format: match config.report.format.as_str() {
+                "json" => ReportFormat::Json,
+                "html" => ReportFormat::Html,
+                "raw" => ReportFormat::Raw,
+                "raw-json" | "raw_json" => ReportFormat::RawJson,
+                _ => ReportFormat::Markdown,
+            },
+            verbosity: match config.report.verbosity.as_str() {
+                "minimal" => Verbosity::Minimal,
+                "verbose" => Verbosity::Verbose,
+                _ => Verbosity::Normal,
+            },
+            strip_ansi: config.filter.strip_ansi,
+            strip_tui_frames: config.filter.strip_tui_frames,
+            max_output_lines: config.filter.max_lines,
+            max_line_length: config.filter.max_line_length,
+            noise_patterns: config.filter.noise_patterns.clone(),
+            keep_patterns: config.filter.keep_patterns.clone(),
+            success_short_circuit: config.report.success_short_circuit,
+            limits: config.limits.clone(),
+            ..AnalyzeOptions::default()
+        }
     }
 }
 
@@ -615,6 +639,10 @@ pub enum ReportFormat {
     Markdown,
     Json,
     Html,
+    /// Pipe-delimited raw text output (machine-readable)
+    Raw,
+    /// JSON lines output (one JSON object per line)
+    RawJson,
 }
 
 impl ReportFormat {
@@ -624,7 +652,13 @@ impl ReportFormat {
             ReportFormat::Markdown => "md",
             ReportFormat::Json => "json",
             ReportFormat::Html => "html",
+            ReportFormat::Raw => "txt",
+            ReportFormat::RawJson => "jsonl",
         }
+    }
+
+    pub fn is_raw(&self) -> bool {
+        matches!(self, ReportFormat::Raw | ReportFormat::RawJson)
     }
 }
 
@@ -636,6 +670,8 @@ impl std::str::FromStr for ReportFormat {
             "markdown" | "md" => Ok(ReportFormat::Markdown),
             "json" => Ok(ReportFormat::Json),
             "html" => Ok(ReportFormat::Html),
+            "raw" => Ok(ReportFormat::Raw),
+            "raw-json" | "raw_json" => Ok(ReportFormat::RawJson),
             _ => Err(format!("Unknown report format: {}", s)),
         }
     }

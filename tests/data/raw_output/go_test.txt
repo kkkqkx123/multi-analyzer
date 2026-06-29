@@ -3,10 +3,10 @@ FAIL	example.com/myproject/pkg/utils [setup failed]
 FAIL	example.com/myproject/cmd/myapp [build failed]
 FAIL
 # example.com/myproject/internal/config
-internal\config\config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
+internal/config/config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
 	go get -t example.com/myproject/internal/config
 # example.com/myproject/pkg/utils
-internal\config\config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
+internal/config/config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
 	go get -t example.com/myproject/internal/config
 # example.com/myproject/cmd/myapp
-cmd\myapp\main.go:22:28: fmt.Printf format %d has arg "hello" of wrong type string
+cmd/myapp/main.go:22:28: fmt.Printf format %d has arg "hello" of wrong type string

@@ -12,12 +12,11 @@
 
 ## Issue Details (Grouped by File)
 
-### internal/config/config.go
+### pkg/utils/math.go
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 15 | 15 | Warning | Error return value of `os.Setenv` is not checked |
-| 26 | 10 | Warning | error strings should not be capitalized |
+| 20 | 16 | Warning | Error return value of `os.Open` is not checked |
 
 ### cmd/myapp/main.go
 
@@ -28,11 +27,12 @@
 | 21 | 10 | Warning | Error return value of `os.Setenv` is not checked |
 | 23 | 2 | Warning | `cfg` is unused |
 
-### pkg/utils/math.go
+### internal/config/config.go
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 20 | 16 | Warning | Error return value of `os.Open` is not checked |
+| 15 | 15 | Warning | Error return value of `os.Setenv` is not checked |
+| 26 | 10 | Warning | error strings should not be capitalized |
 
 ## Raw Output
 

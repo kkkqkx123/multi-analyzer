@@ -26,20 +26,26 @@ fn test_cmake_parser_basic() {
     assert!(!issues.is_empty(), "Should parse issues from CMake output");
 
     // Check for CMake errors
-    let cmake_errors: Vec<_> = issues.iter()
+    let cmake_errors: Vec<_> = issues
+        .iter()
         .filter(|i| i.code.as_ref().is_some_and(|c| c.contains("CMake Error")))
         .collect();
     assert!(!cmake_errors.is_empty(), "Should have CMake errors");
 
     // Check for CMake warnings
-    let cmake_warnings: Vec<_> = issues.iter()
+    let cmake_warnings: Vec<_> = issues
+        .iter()
         .filter(|i| i.code.as_ref().is_some_and(|c| c.contains("CMake Warning")))
         .collect();
     assert!(!cmake_warnings.is_empty(), "Should have CMake warnings");
 
     // Check for compiler errors (parsed by CppParser)
-    let compiler_errors: Vec<_> = issues.iter()
-        .filter(|i| matches!(i.level, IssueLevel::Error) && i.code.as_ref().is_none_or(|c| !c.contains("CMake")))
+    let compiler_errors: Vec<_> = issues
+        .iter()
+        .filter(|i| {
+            matches!(i.level, IssueLevel::Error)
+                && i.code.as_ref().is_none_or(|c| !c.contains("CMake"))
+        })
         .collect();
 
     println!("✓ CMake parser correctly parsed {} issues ({} CMake errors, {} CMake warnings, {} compiler issues)",
@@ -64,10 +70,17 @@ CMake Error at CMakeLists.txt:10 (add_executable):
     assert!(issue.location.file_path.contains("CMakeLists.txt"));
     assert_eq!(issue.location.line_number, Some(10));
     // Now captures multi-line message
-    assert!(issue.message.contains("Cannot find source file"), "Expected message to contain 'Cannot find source file', got: '{}'", issue.message);
+    assert!(
+        issue.message.contains("Cannot find source file"),
+        "Expected message to contain 'Cannot find source file', got: '{}'",
+        issue.message
+    );
     assert!(issue.code.as_ref().unwrap().contains("CMake Error"));
 
-    println!("✓ CMake error parsing works correctly (message: '{}')", issue.message);
+    println!(
+        "✓ CMake error parsing works correctly (message: '{}')",
+        issue.message
+    );
 }
 
 #[test]
@@ -87,10 +100,17 @@ CMake Warning at cmake/FindPackage.cmake:25 (find_package):
     assert!(issue.location.file_path.contains("FindPackage.cmake"));
     assert_eq!(issue.location.line_number, Some(25));
     // Now captures multi-line message
-    assert!(issue.message.contains("Could not find"), "Expected message to contain 'Could not find', got: '{}'", issue.message);
+    assert!(
+        issue.message.contains("Could not find"),
+        "Expected message to contain 'Could not find', got: '{}'",
+        issue.message
+    );
     assert!(issue.code.as_ref().unwrap().contains("CMake Warning"));
 
-    println!("✓ CMake warning parsing works correctly (message: '{}')", issue.message);
+    println!(
+        "✓ CMake warning parsing works correctly (message: '{}')",
+        issue.message
+    );
 }
 
 #[test]
@@ -122,8 +142,6 @@ src/utils.cpp:25:12: warning: unused variable 'tmp' [-Wunused-variable]
     println!("✓ CMake with compiler output parsing works correctly");
 }
 
-
-
 #[test]
 fn test_empty_output() {
     let parser = CMakeParser::new();
@@ -150,9 +168,16 @@ CMake Error at CMakeLists.txt:15 (target_link_libraries):
     assert!(issue.location.file_path.contains("CMakeLists.txt"));
     assert_eq!(issue.location.line_number, Some(15));
     // Now captures multi-line message
-    assert!(issue.message.contains("Cannot specify link libraries"), "Expected message to contain 'Cannot specify link libraries', got: '{}'", issue.message);
+    assert!(
+        issue.message.contains("Cannot specify link libraries"),
+        "Expected message to contain 'Cannot specify link libraries', got: '{}'",
+        issue.message
+    );
 
-    println!("✓ CMake target_link_libraries error parsing works correctly (message: '{}')", issue.message);
+    println!(
+        "✓ CMake target_link_libraries error parsing works correctly (message: '{}')",
+        issue.message
+    );
 }
 
 #[test]
@@ -174,7 +199,16 @@ CMake Warning at cmake/FindBoost.cmake:42 (find_package):
     assert!(issue.location.file_path.contains("FindBoost.cmake"));
     assert_eq!(issue.location.line_number, Some(42));
     // Now captures multi-line message
-    assert!(issue.message.contains("Could not find a package configuration file"), "Expected message to contain 'Could not find a package configuration file', got: '{}'", issue.message);
+    assert!(
+        issue
+            .message
+            .contains("Could not find a package configuration file"),
+        "Expected message to contain 'Could not find a package configuration file', got: '{}'",
+        issue.message
+    );
 
-    println!("✓ CMake find_package warning parsing works correctly (message: '{}')", issue.message);
+    println!(
+        "✓ CMake find_package warning parsing works correctly (message: '{}')",
+        issue.message
+    );
 }

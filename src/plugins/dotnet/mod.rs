@@ -1,7 +1,7 @@
 //! .NET Plugin
 //! Provide analysis support for .NET projects
 
-pub mod parser;
 pub mod analyzer;
+pub mod parser;
 
 pub use analyzer::DotnetAnalyzer;

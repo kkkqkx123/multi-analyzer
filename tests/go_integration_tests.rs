@@ -4,7 +4,10 @@
 use std::path::PathBuf;
 
 mod common;
-use common::{fixtures_dir, is_command_available, run_command, save_raw_output, generate_report, generate_test_report};
+use common::{
+    fixtures_dir, generate_report, generate_test_report, is_command_available, run_command,
+    save_raw_output,
+};
 
 fn go_project_path() -> PathBuf {
     fixtures_dir().join("go-project")
@@ -13,7 +16,9 @@ fn go_project_path() -> PathBuf {
 /// Check if Go is available
 fn ensure_go() -> Result<(), String> {
     if !is_command_available("go") {
-        return Err("Go is not installed. Please install Go from https://golang.org/dl/".to_string());
+        return Err(
+            "Go is not installed. Please install Go from https://golang.org/dl/".to_string(),
+        );
     }
     Ok(())
 }
@@ -28,8 +33,8 @@ fn ensure_golangci_lint() -> Result<(), String> {
 
 #[test]
 fn test_go_build_output() {
-    use analyzer::plugins::go::parser::GoParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::go::parser::GoParser;
 
     if let Err(e) = ensure_go() {
         println!("Skipping test: {}", e);
@@ -59,7 +64,7 @@ fn test_go_build_output() {
         "Go Build",
         "go build ./...",
         &issues,
-        Some("raw_output/go_build.txt")
+        Some("raw_output/go_build.txt"),
     );
 
     println!("=== Go Build Output ===");
@@ -94,8 +99,8 @@ fn test_go_build_output() {
 
 #[test]
 fn test_go_vet_output() {
-    use analyzer::plugins::go::parser::GoParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::go::parser::GoParser;
 
     if let Err(e) = ensure_go() {
         println!("Skipping test: {}", e);
@@ -124,7 +129,7 @@ fn test_go_vet_output() {
         "Go Vet",
         "go vet ./...",
         &issues,
-        Some("raw_output/go_vet.txt")
+        Some("raw_output/go_vet.txt"),
     );
 
     println!("=== Go Vet Output ===");
@@ -134,7 +139,10 @@ fn test_go_vet_output() {
     for line in output.lines() {
         if !line.starts_with('#') && line.contains(':') {
             let parts: Vec<&str> = line.splitn(5, ':').collect();
-            if parts.len() >= 4 && parts[1].trim().parse::<u32>().is_ok() && parts[2].trim().parse::<u32>().is_ok() {
+            if parts.len() >= 4
+                && parts[1].trim().parse::<u32>().is_ok()
+                && parts[2].trim().parse::<u32>().is_ok()
+            {
                 println!("  Found vet issue: {}", line);
             }
         }
@@ -143,8 +151,8 @@ fn test_go_vet_output() {
 
 #[test]
 fn test_golangci_lint_output() {
-    use analyzer::plugins::go::parser::GoParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::go::parser::GoParser;
 
     if let Err(e) = ensure_golangci_lint() {
         println!("Skipping test: {}", e);
@@ -173,7 +181,7 @@ fn test_golangci_lint_output() {
         "Golangci-lint",
         "golangci-lint run ./...",
         &issues,
-        Some("raw_output/golangci_lint.txt")
+        Some("raw_output/golangci_lint.txt"),
     );
 
     println!("=== Golangci-lint Output ===");
@@ -193,8 +201,8 @@ fn test_golangci_lint_output() {
 
 #[test]
 fn test_go_test_output() {
-    use analyzer::plugins::go::parser::GoParser;
     use analyzer::core::TestOutputParser;
+    use analyzer::plugins::go::parser::GoParser;
 
     if let Err(e) = ensure_go() {
         println!("Skipping test: {}", e);
@@ -223,7 +231,7 @@ fn test_go_test_output() {
         "Go Test",
         "go test -v ./...",
         &test_output,
-        Some("raw_output/go_test.txt")
+        Some("raw_output/go_test.txt"),
     );
 
     println!("=== Go Test Output ===");
@@ -252,8 +260,8 @@ fn test_go_test_output() {
 
 #[test]
 fn test_go_analyzer_traits() {
-    use analyzer::plugins::go::analyzer::GoAnalyzer;
     use analyzer::core::BuildAnalyzer;
+    use analyzer::plugins::go::analyzer::GoAnalyzer;
 
     let analyzer = GoAnalyzer::new();
 
@@ -267,8 +275,8 @@ fn test_go_analyzer_traits() {
 
 #[test]
 fn test_go_parser_specific_patterns() {
+    use analyzer::core::{IssueLevel, OutputParser};
     use analyzer::plugins::go::parser::GoParser;
-    use analyzer::core::{OutputParser, IssueLevel};
 
     let parser = GoParser::new();
 
@@ -311,8 +319,8 @@ fn test_go_parser_specific_patterns() {
 
 #[test]
 fn test_go_test_parser() {
-    use analyzer::plugins::go::parser::GoParser;
     use analyzer::core::TestOutputParser;
+    use analyzer::plugins::go::parser::GoParser;
 
     let parser = GoParser::new();
 
@@ -349,8 +357,8 @@ ok  	example.com/myproject	0.052s
 
 #[test]
 fn test_validate_go_outputs() {
-    use analyzer::plugins::go::parser::GoParser;
     use analyzer::core::{OutputParser, TestOutputParser};
+    use analyzer::plugins::go::parser::GoParser;
 
     let parser = GoParser::new();
 
@@ -365,7 +373,12 @@ fn test_validate_go_outputs() {
         let sample_path = common::samples_dir().join(filename);
         if let Ok(content) = std::fs::read_to_string(&sample_path) {
             let issues = parser.parse(&content).data_or_default_owned();
-            println!("✓ {}: Parsed {} issues from {}", tool, issues.len(), filename);
+            println!(
+                "✓ {}: Parsed {} issues from {}",
+                tool,
+                issues.len(),
+                filename
+            );
 
             // Generate report for sample
             let report_name = filename.replace("_sample.txt", "_sample");
@@ -374,7 +387,7 @@ fn test_validate_go_outputs() {
                 &format!("Go {} (Sample)", tool),
                 tool,
                 &issues,
-                Some(&format!("samples/{}", filename))
+                Some(&format!("samples/{}", filename)),
             );
         } else {
             println!("! Sample file not found: {}", sample_path.display());
@@ -385,7 +398,8 @@ fn test_validate_go_outputs() {
     let test_sample_path = common::samples_dir().join("go_test_sample.txt");
     if let Ok(content) = std::fs::read_to_string(&test_sample_path) {
         let test_output = parser.parse_test_output(&content);
-        println!("✓ go test: Parsed {} passed, {} failed, {} skipped from sample",
+        println!(
+            "✓ go test: Parsed {} passed, {} failed, {} skipped from sample",
             test_output.passed_tests.len(),
             test_output.failed_tests.len(),
             test_output.ignored_tests.len()
@@ -397,7 +411,7 @@ fn test_validate_go_outputs() {
             "Go Test (Sample)",
             "go test -v ./...",
             &test_output,
-            Some("samples/go_test_sample.txt")
+            Some("samples/go_test_sample.txt"),
         );
     }
 }

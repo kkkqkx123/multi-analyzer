@@ -3,7 +3,7 @@
 
 use crate::core::{
     AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
+    OutputPostProcessor, TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::PytestParser;
@@ -21,7 +21,11 @@ impl PytestAnalyzer {
 
     /// Create command builder for pytest
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("-v --color=no --tb=short");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("-v --color=no --tb=short");
         CommandBuilder::from_exec_string(&format!("pytest {}", command_str))
     }
 
@@ -47,7 +51,9 @@ impl BuildAnalyzer for PytestAnalyzer {
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
         let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
+        let raw_output = builder.execute()?;
+        let processor = OutputPostProcessor::from_options(options);
+        let output = processor.process(&raw_output);
 
         println!("Parsing pytest output...");
         let parsed = self.parser.parse_test_output(&output);
@@ -97,14 +103,14 @@ impl TestAnalyzer for PytestAnalyzer {
 
     fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new("pytest");
-        
+
         // Default to "-v --color=no" if no command specified
         let command_str = if options.command.is_empty() {
             "-v --color=no"
         } else {
             &options.command
         };
-        
+
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
         }

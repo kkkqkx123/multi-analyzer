@@ -1,5 +1,7 @@
-internal\config\config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
+internal/config/config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
 	go get -t example.com/myproject/internal/config
-internal\config\config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
+internal/config/config_test.go:7:2: missing go.sum entry for module providing package github.com/stretchr/testify/assert (imported by example.com/myproject/internal/config); to add:
 	go get -t example.com/myproject/internal/config
-cmd\myapp\main.go:22:28: fmt.Printf format %d has arg "hello" of wrong type string
+# example.com/myproject/cmd/myapp
+# [example.com/myproject/cmd/myapp]
+cmd/myapp/main.go:22:28: fmt.Printf format %d has arg "hello" of wrong type string

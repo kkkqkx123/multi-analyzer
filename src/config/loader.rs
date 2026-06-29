@@ -17,9 +17,9 @@ impl ConfigLoader {
     pub fn load_project(project_root: &Path) -> ProjectAppConfig {
         ProjectConfigPaths::find_project_config(project_root)
             .and_then(|path| {
-                std::fs::read_to_string(&path).ok().and_then(|content| {
-                    toml::from_str(&content).ok()
-                })
+                std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|content| toml::from_str(&content).ok())
             })
             .unwrap_or_default()
     }
@@ -66,7 +66,6 @@ impl ConfigLoader {
 
         AppConfig::default()
     }
-
 }
 
 impl Default for ConfigLoader {

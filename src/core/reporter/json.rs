@@ -22,12 +22,18 @@ impl Reporter for JsonReporter {
     fn generate(&self, result: &AnalysisResult) -> Result<String, ReporterError> {
         let mut json = String::new();
         json.push_str("{\n");
-        
+
         // metadata
         json.push_str("  \"metadata\": {\n");
         json.push_str(&format!("    \"total\": {},\n", result.total_issues));
-        json.push_str(&format!("    \"categories\": {},\n", result.unique_patterns.len()));
-        json.push_str(&format!("    \"files_affected\": {}\n", result.issues_by_file.len()));
+        json.push_str(&format!(
+            "    \"categories\": {},\n",
+            result.unique_patterns.len()
+        ));
+        json.push_str(&format!(
+            "    \"files_affected\": {}\n",
+            result.issues_by_file.len()
+        ));
         json.push_str("  },\n");
 
         // Statistics by level
@@ -35,7 +41,11 @@ impl Reporter for JsonReporter {
         let level_order = ["error", "warning", "info", "hint"];
         let mut first = true;
         for level_str in &level_order {
-            if let Some((level, count)) = result.issues_by_level.iter().find(|(l, _)| l.to_string() == *level_str) {
+            if let Some((level, count)) = result
+                .issues_by_level
+                .iter()
+                .find(|(l, _)| l.to_string() == *level_str)
+            {
                 if !first {
                     json.push_str(",\n");
                 }
@@ -52,7 +62,12 @@ impl Reporter for JsonReporter {
             types.sort_by(|a, b| b.1.cmp(a.1));
             for (i, (issue_type, count)) in types.iter().enumerate() {
                 let comma = if i < types.len() - 1 { "," } else { "" };
-                json.push_str(&format!("    \"{}\": {}{}\n", issue_type.replace('"', "\\\""), count, comma));
+                json.push_str(&format!(
+                    "    \"{}\": {}{}\n",
+                    issue_type.replace('"', "\\\""),
+                    count,
+                    comma
+                ));
             }
             json.push_str("  },\n");
         }
@@ -63,7 +78,12 @@ impl Reporter for JsonReporter {
             json.push_str("  \"top_error_codes\": [\n");
             for (i, (code, count)) in top_codes.iter().enumerate() {
                 let comma = if i < top_codes.len() - 1 { "," } else { "" };
-                json.push_str(&format!("    {{\"code\": \"{}\", \"count\": {}}}{}\n", code.replace('"', "\\\""), count, comma));
+                json.push_str(&format!(
+                    "    {{\"code\": \"{}\", \"count\": {}}}{}\n",
+                    code.replace('"', "\\\""),
+                    count,
+                    comma
+                ));
             }
             json.push_str("  ],\n");
         }
@@ -78,9 +98,15 @@ impl Reporter for JsonReporter {
             if let Some(code) = &issue.code {
                 json.push_str(&format!("      \"code\": \"{}\",\n", code));
             }
-            json.push_str(&format!("      \"message\": \"{}\",\n", issue.message.replace('"', "\\\"")));
+            json.push_str(&format!(
+                "      \"message\": \"{}\",\n",
+                issue.message.replace('"', "\\\"")
+            ));
             json.push_str("      \"location\": {\n");
-            json.push_str(&format!("        \"file\": \"{}\"", issue.location.file_path.replace('"', "\\\"")));
+            json.push_str(&format!(
+                "        \"file\": \"{}\"",
+                issue.location.file_path.replace('"', "\\\"")
+            ));
             if let Some(line) = issue.location.line_number {
                 json.push_str(&format!(",\n        \"line\": {}", line));
             }

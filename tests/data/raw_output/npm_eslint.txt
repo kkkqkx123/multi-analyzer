@@ -5,7 +5,7 @@ ESLint: 8.57.1
 
 ESLint couldn't find the config "@typescript-eslint/recommended" to extend from. Please check that the name of the config is correct.
 
-The config "@typescript-eslint/recommended" was referenced from the config file in "D:\项目\cli\analyzer\tests\data\fixtures\npm-project\.eslintrc.js".
+The config "@typescript-eslint/recommended" was referenced from the config file in "/workspace/multi-analyzer/tests/data/fixtures/npm-project/.eslintrc.js".
 
 If you still have problems, please stop by https://eslint.org/chat/help to chat with the team.
 

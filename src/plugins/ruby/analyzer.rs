@@ -2,8 +2,8 @@
 //! Run Ruby-related commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
+    run_analyzer, AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
+    OutputParser, TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::RubyParser;
@@ -20,21 +20,18 @@ impl RubyAnalyzer {
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("");
         let lower = command_str.to_lowercase();
 
         // Detect command type and auto-inject --format json where possible
-        if lower.starts_with("rubocop") && !command_str.contains("--format") && !command_str.contains("-f") {
-            let mut builder = CommandBuilder::new("bundle");
-            builder = builder.arg("exec");
-
-            for arg in command_str.split_whitespace() {
-                builder = builder.arg(arg);
-            }
-
-            builder = builder.arg("--format").arg("json");
-            builder
-        } else if lower.starts_with("rspec") && !command_str.contains("--format") && !command_str.contains("-f") {
+        if (lower.starts_with("rubocop") || lower.starts_with("rspec"))
+            && !command_str.contains("--format")
+            && !command_str.contains("-f")
+        {
             let mut builder = CommandBuilder::new("bundle");
             builder = builder.arg("exec");
 
@@ -67,22 +64,10 @@ impl BuildAnalyzer for RubyAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        use crate::core::run_analysis_pipeline;
-        use crate::core::stream::StageResult;
-
         let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        match run_analysis_pipeline(&self.parser, &output, options) {
-            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
-                println!("Found {} issues", result.total_issues);
-                Ok(result)
-            }
-            StageResult::Failed(warnings) => {
-                Err(AnalyzerError::ParseError(warnings.join("; ")))
-            }
-        }
+        let result = run_analyzer(&builder, &self.parser, options)?;
+        println!("Found {} issues", result.total_issues);
+        Ok(result)
     }
 
     fn parser(&self) -> &dyn OutputParser {
@@ -118,7 +103,10 @@ impl TestAnalyzer for RubyAnalyzer {
         }
 
         // Auto-inject JSON format for RSpec
-        if command_str.starts_with("rspec") && !command_str.contains("--format") && !command_str.contains("-f") {
+        if command_str.starts_with("rspec")
+            && !command_str.contains("--format")
+            && !command_str.contains("-f")
+        {
             builder = builder.arg("--format").arg("json");
         }
 

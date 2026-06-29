@@ -56,8 +56,13 @@ pub fn save_raw_output(name: &str, content: &str) -> PathBuf {
 /// Read sample file content
 pub fn read_sample(name: &str) -> String {
     let sample_path = samples_dir().join(format!("{}.txt", name));
-    fs::read_to_string(&sample_path)
-        .unwrap_or_else(|e| panic!("Failed to read sample file {}: {}", sample_path.display(), e))
+    fs::read_to_string(&sample_path).unwrap_or_else(|e| {
+        panic!(
+            "Failed to read sample file {}: {}",
+            sample_path.display(),
+            e
+        )
+    })
 }
 
 /// Generate Markdown report
@@ -68,7 +73,7 @@ pub fn generate_report(
     issues: &[analyzer::core::Issue],
     raw_output_path: Option<&str>,
 ) -> PathBuf {
-    use analyzer::core::{IssueLevel, AnalysisResult};
+    use analyzer::core::{AnalysisResult, IssueLevel};
 
     let report_path = reports_dir().join(format!("{}_report.md", name));
     let result = AnalysisResult::from_issues(issues.to_vec());
@@ -86,7 +91,10 @@ pub fn generate_report(
     report.push_str(&format!("- **Total Issues**: {}\n", issues.len()));
 
     let error_count = result.issues_by_level.get(&IssueLevel::Error).unwrap_or(&0);
-    let warning_count = result.issues_by_level.get(&IssueLevel::Warning).unwrap_or(&0);
+    let warning_count = result
+        .issues_by_level
+        .get(&IssueLevel::Warning)
+        .unwrap_or(&0);
     let info_count = result.issues_by_level.get(&IssueLevel::Info).unwrap_or(&0);
 
     report.push_str(&format!("- **Errors**: {}\n", error_count));
@@ -96,10 +104,15 @@ pub fn generate_report(
     // File statistics
     let mut files_with_issues: HashMap<&str, usize> = HashMap::new();
     for issue in issues {
-        *files_with_issues.entry(issue.location.file_path.as_str()).or_insert(0) += 1;
+        *files_with_issues
+            .entry(issue.location.file_path.as_str())
+            .or_insert(0) += 1;
     }
 
-    report.push_str(&format!("- **Files with Issues**: {}\n\n", files_with_issues.len()));
+    report.push_str(&format!(
+        "- **Files with Issues**: {}\n\n",
+        files_with_issues.len()
+    ));
 
     // Issues grouped by file
     if !issues.is_empty() {
@@ -107,7 +120,8 @@ pub fn generate_report(
 
         let mut file_issues: HashMap<&str, Vec<&analyzer::core::Issue>> = HashMap::new();
         for issue in issues {
-            file_issues.entry(issue.location.file_path.as_str())
+            file_issues
+                .entry(issue.location.file_path.as_str())
                 .or_default()
                 .push(issue);
         }
@@ -118,12 +132,23 @@ pub fn generate_report(
             report.push_str("|------|--------|-------|---------|\n");
 
             for issue in file_issues_list {
-                let line = issue.location.line_number.map(|l| l.to_string()).unwrap_or_else(|| "-".to_string());
-                let column = issue.location.column_number.map(|c| c.to_string()).unwrap_or_else(|| "-".to_string());
+                let line = issue
+                    .location
+                    .line_number
+                    .map(|l| l.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let column = issue
+                    .location
+                    .column_number
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string());
                 let level = format!("{:?}", issue.level);
                 let message = issue.message.replace("|", "\\|").replace("\n", " ");
 
-                report.push_str(&format!("| {} | {} | {} | {} |\n", line, column, level, message));
+                report.push_str(&format!(
+                    "| {} | {} | {} | {} |\n",
+                    line, column, level, message
+                ));
             }
             report.push('\n');
         }
@@ -132,7 +157,10 @@ pub fn generate_report(
     // Raw output link
     if let Some(path) = raw_output_path {
         report.push_str("## Raw Output\n\n");
-        report.push_str(&format!("View raw command output: [{}]({})\n\n", path, path));
+        report.push_str(&format!(
+            "View raw command output: [{}]({})\n\n",
+            path, path
+        ));
     }
 
     fs::write(&report_path, report).expect("Failed to write report file");
@@ -168,9 +196,18 @@ pub fn generate_test_report(
         + test_output.ignored_tests.len();
 
     report.push_str(&format!("- **Total Tests**: {}\n", total));
-    report.push_str(&format!("- **Passed**: {}\n", test_output.passed_tests.len()));
-    report.push_str(&format!("- **Failed**: {}\n", test_output.failed_tests.len()));
-    report.push_str(&format!("- **Skipped/Ignored**: {}\n", test_output.ignored_tests.len()));
+    report.push_str(&format!(
+        "- **Passed**: {}\n",
+        test_output.passed_tests.len()
+    ));
+    report.push_str(&format!(
+        "- **Failed**: {}\n",
+        test_output.failed_tests.len()
+    ));
+    report.push_str(&format!(
+        "- **Skipped/Ignored**: {}\n",
+        test_output.ignored_tests.len()
+    ));
 
     report.push('\n');
 
@@ -181,14 +218,20 @@ pub fn generate_test_report(
         report.push_str("|-----------|------|------|-------|\n");
 
         for test in &test_output.failed_tests {
-            let file = test.location.as_ref()
+            let file = test
+                .location
+                .as_ref()
                 .map(|l| l.file_path.as_str())
                 .unwrap_or("-");
-            let line = test.location.as_ref()
+            let line = test
+                .location
+                .as_ref()
                 .and_then(|l| l.line_number)
                 .map(|l| l.to_string())
                 .unwrap_or_else(|| "-".to_string());
-            let error = test.failure_details.as_ref()
+            let error = test
+                .failure_details
+                .as_ref()
                 .map(|d| d.lines().next().unwrap_or(d.as_str()).to_string())
                 .unwrap_or_else(|| "-".to_string());
             let error_short = if error.len() > 50 {
@@ -197,8 +240,13 @@ pub fn generate_test_report(
                 error
             };
 
-            report.push_str(&format!("| {} | {} | {} | {} |\n",
-                test.name, file, line, error_short.replace("|", "\\|")));
+            report.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                test.name,
+                file,
+                line,
+                error_short.replace("|", "\\|")
+            ));
         }
         report.push('\n');
     }
@@ -210,7 +258,9 @@ pub fn generate_test_report(
         report.push_str("|-----------|------|\n");
 
         for test in &test_output.passed_tests {
-            let file = test.location.as_ref()
+            let file = test
+                .location
+                .as_ref()
                 .map(|l| l.file_path.as_str())
                 .unwrap_or("-");
 
@@ -226,7 +276,9 @@ pub fn generate_test_report(
         report.push_str("|-----------|------|--------|\n");
 
         for test in &test_output.ignored_tests {
-            let file = test.location.as_ref()
+            let file = test
+                .location
+                .as_ref()
                 .map(|l| l.file_path.as_str())
                 .unwrap_or("-");
             let reason = match &test.status {
@@ -266,7 +318,10 @@ pub fn generate_test_report(
     // Raw output link
     if let Some(path) = raw_output_path {
         report.push_str("## Raw Output\n\n");
-        report.push_str(&format!("View raw command output: [{}]({})\n\n", path, path));
+        report.push_str(&format!(
+            "View raw command output: [{}]({})\n\n",
+            path, path
+        ));
     }
 
     fs::write(&report_path, report).expect("Failed to write report file");
@@ -325,8 +380,8 @@ pub fn is_command_available(cmd: &str) -> bool {
 /// Run command and return output (using resolved full path)
 pub fn run_command(cmd: &str, args: &[&str], cwd: &PathBuf) -> Result<String, String> {
     // Resolve command path
-    let cmd_path = resolve_command(cmd)
-        .ok_or_else(|| format!("Command '{}' not found in PATH", cmd))?;
+    let cmd_path =
+        resolve_command(cmd).ok_or_else(|| format!("Command '{}' not found in PATH", cmd))?;
 
     println!("Executing: {} with args {:?}", cmd_path.display(), args);
 

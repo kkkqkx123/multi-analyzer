@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 mod common;
-use common::{fixtures_dir, is_command_available, run_command, generate_report, save_raw_output};
+use common::{fixtures_dir, generate_report, is_command_available, run_command, save_raw_output};
 
 /// Check if a command is available
 fn ensure_command(cmd: &str) -> Result<(), String> {
@@ -22,8 +22,8 @@ fn cpp_project_path() -> PathBuf {
 
 #[test]
 fn test_gcc_basic_output() {
-    use analyzer::plugins::cpp::parser::{CppParser, CompilerType};
     use analyzer::core::OutputParser;
+    use analyzer::plugins::cpp::parser::{CompilerType, CppParser};
 
     if let Err(e) = ensure_command("g++") {
         println!("Skipping test: {}", e);
@@ -32,11 +32,25 @@ fn test_gcc_basic_output() {
 
     let project_path = cpp_project_path();
     if !project_path.exists() {
-        println!("Skipping test: C++ project fixture not found at {:?}", project_path);
+        println!(
+            "Skipping test: C++ project fixture not found at {:?}",
+            project_path
+        );
         return;
     }
 
-    let output = match run_command("g++", &["-std=c++17", "-Wall", "-c", "src/main.cpp", "-o", "/tmp/test.o"], &project_path) {
+    let output = match run_command(
+        "g++",
+        &[
+            "-std=c++17",
+            "-Wall",
+            "-c",
+            "src/main.cpp",
+            "-o",
+            "/tmp/test.o",
+        ],
+        &project_path,
+    ) {
         Ok(output) => output,
         Err(e) => {
             // Compiler errors are expected for test files with intentional errors
@@ -57,7 +71,7 @@ fn test_gcc_basic_output() {
             "GCC Basic",
             "g++ -std=c++17 -Wall -c src/main.cpp",
             &issues,
-            Some("raw_output/gcc_basic.txt")
+            Some("raw_output/gcc_basic.txt"),
         );
     }
 
@@ -71,7 +85,9 @@ fn test_gcc_basic_output() {
     });
 
     if has_gcc_errors {
-        println!("✓ Found GCC error/warning lines in expected format (file:line:col: level: message)");
+        println!(
+            "✓ Found GCC error/warning lines in expected format (file:line:col: level: message)"
+        );
     } else if output.contains("Success") || output.is_empty() {
         println!("✓ GCC reported success (no issues found)");
     } else {
@@ -81,8 +97,8 @@ fn test_gcc_basic_output() {
 
 #[test]
 fn test_clang_basic_output() {
-    use analyzer::plugins::cpp::parser::{CppParser, CompilerType};
     use analyzer::core::OutputParser;
+    use analyzer::plugins::cpp::parser::{CompilerType, CppParser};
 
     if let Err(e) = ensure_command("clang++") {
         println!("Skipping test: {}", e);
@@ -95,7 +111,18 @@ fn test_clang_basic_output() {
         return;
     }
 
-    let output = match run_command("clang++", &["-std=c++17", "-Wall", "-c", "src/main.cpp", "-o", "/tmp/test.o"], &project_path) {
+    let output = match run_command(
+        "clang++",
+        &[
+            "-std=c++17",
+            "-Wall",
+            "-c",
+            "src/main.cpp",
+            "-o",
+            "/tmp/test.o",
+        ],
+        &project_path,
+    ) {
         Ok(output) => output,
         Err(e) => e.to_string(),
     };
@@ -111,7 +138,7 @@ fn test_clang_basic_output() {
             "Clang Basic",
             "clang++ -std=c++17 -Wall -c src/main.cpp",
             &issues,
-            Some("raw_output/clang_basic.txt")
+            Some("raw_output/clang_basic.txt"),
         );
     }
 
@@ -132,8 +159,8 @@ fn test_clang_basic_output() {
 
 #[test]
 fn test_cmake_configure_output() {
-    use analyzer::plugins::cpp::cmake::parser::CMakeParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::cpp::cmake::parser::CMakeParser;
 
     if let Err(e) = ensure_command("cmake") {
         println!("Skipping test: {}", e);
@@ -166,7 +193,7 @@ fn test_cmake_configure_output() {
             "CMake Configure",
             "cmake ..",
             &issues,
-            Some("raw_output/cmake_configure.txt")
+            Some("raw_output/cmake_configure.txt"),
         );
     }
 
@@ -188,7 +215,7 @@ fn test_cmake_configure_output() {
 
 #[test]
 fn test_compiler_detection() {
-    use analyzer::plugins::cpp::parser::{CppParser, CompilerType};
+    use analyzer::plugins::cpp::parser::{CompilerType, CppParser};
 
     // Test GCC detection from version output
     if is_command_available("g++") {
@@ -199,7 +226,10 @@ fn test_compiler_detection() {
             .unwrap_or_default();
 
         let detected = CppParser::detect_compiler_type(&version_output);
-        assert!(matches!(detected, CompilerType::Gcc), "Should detect GCC from version output");
+        assert!(
+            matches!(detected, CompilerType::Gcc),
+            "Should detect GCC from version output"
+        );
         println!("✓ GCC compiler detection works");
     }
 
@@ -212,15 +242,18 @@ fn test_compiler_detection() {
             .unwrap_or_default();
 
         let detected = CppParser::detect_compiler_type(&version_output);
-        assert!(matches!(detected, CompilerType::Clang), "Should detect Clang from version output");
+        assert!(
+            matches!(detected, CompilerType::Clang),
+            "Should detect Clang from version output"
+        );
         println!("✓ Clang compiler detection works");
     }
 }
 
 #[test]
 fn test_parser_with_real_gcc_warnings() {
-    use analyzer::plugins::cpp::parser::{CppParser, CompilerType};
     use analyzer::core::OutputParser;
+    use analyzer::plugins::cpp::parser::{CompilerType, CppParser};
 
     // Create a temporary C++ file with intentional issues
     let temp_dir = std::env::temp_dir().join("analyzer_test_cpp");
@@ -248,9 +281,9 @@ int main() {
             let issues = parser.parse(&stderr).data_or_default_owned();
 
             // Should detect unused variable warning
-            let has_unused_warning = issues.iter().any(|i| {
-                i.message.contains("unused") || i.message.contains("set but not used")
-            });
+            let has_unused_warning = issues
+                .iter()
+                .any(|i| i.message.contains("unused") || i.message.contains("set but not used"));
 
             if has_unused_warning {
                 println!("✓ GCC parser correctly detected unused variable warning");

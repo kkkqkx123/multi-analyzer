@@ -7,7 +7,7 @@ mod common;
 use common::samples_dir;
 
 use analyzer::core::{IssueLevel, OutputParser};
-use analyzer::plugins::cpp::parser::{CppParser, CompilerType};
+use analyzer::plugins::cpp::parser::{CompilerType, CppParser};
 
 /// Read sample file content
 fn read_sample(name: &str) -> String {
@@ -18,10 +18,22 @@ fn read_sample(name: &str) -> String {
 
 /// Count issues by level
 fn count_issues_by_level(issues: &[analyzer::core::Issue]) -> (usize, usize, usize, usize) {
-    let errors = issues.iter().filter(|i| matches!(i.level, IssueLevel::Error)).count();
-    let warnings = issues.iter().filter(|i| matches!(i.level, IssueLevel::Warning)).count();
-    let infos = issues.iter().filter(|i| matches!(i.level, IssueLevel::Info)).count();
-    let hints = issues.iter().filter(|i| matches!(i.level, IssueLevel::Hint)).count();
+    let errors = issues
+        .iter()
+        .filter(|i| matches!(i.level, IssueLevel::Error))
+        .count();
+    let warnings = issues
+        .iter()
+        .filter(|i| matches!(i.level, IssueLevel::Warning))
+        .count();
+    let infos = issues
+        .iter()
+        .filter(|i| matches!(i.level, IssueLevel::Info))
+        .count();
+    let hints = issues
+        .iter()
+        .filter(|i| matches!(i.level, IssueLevel::Hint))
+        .count();
     (errors, warnings, infos, hints)
 }
 
@@ -60,8 +72,13 @@ fn test_gcc_parser_basic() {
     assert!(matches!(note.level, IssueLevel::Info));
     assert!(note.message.contains("suggested alternative"));
 
-    println!("✓ GCC parser correctly parsed {} issues ({} errors, {} warnings, {} infos)",
-             issues.len(), errors, warnings, infos);
+    println!(
+        "✓ GCC parser correctly parsed {} issues ({} errors, {} warnings, {} infos)",
+        issues.len(),
+        errors,
+        warnings,
+        infos
+    );
 }
 
 #[test]
@@ -86,8 +103,13 @@ fn test_clang_parser_basic() {
     assert!(matches!(error.level, IssueLevel::Error));
     assert!(error.message.contains("undeclared identifier"));
 
-    println!("✓ Clang parser correctly parsed {} issues ({} errors, {} warnings, {} infos)",
-             issues.len(), errors, warnings, infos);
+    println!(
+        "✓ Clang parser correctly parsed {} issues ({} errors, {} warnings, {} infos)",
+        issues.len(),
+        errors,
+        warnings,
+        infos
+    );
 }
 
 #[test]
@@ -125,32 +147,46 @@ fn test_msvc_parser_basic() {
     assert!(matches!(fatal.level, IssueLevel::Error));
     assert!(fatal.message.contains("Cannot open include file"));
 
-    println!("✓ MSVC parser correctly parsed {} issues ({} errors, {} warnings)",
-             issues.len(), errors, warnings);
+    println!(
+        "✓ MSVC parser correctly parsed {} issues ({} errors, {} warnings)",
+        issues.len(),
+        errors,
+        warnings
+    );
 }
 
 #[test]
 fn test_compiler_type_detection() {
     // Test GCC detection
     let gcc_output = "gcc version 11.2.0 (Ubuntu 11.2.0-19ubuntu1)";
-    assert!(matches!(CppParser::detect_compiler_type(gcc_output), CompilerType::Gcc));
+    assert!(matches!(
+        CppParser::detect_compiler_type(gcc_output),
+        CompilerType::Gcc
+    ));
 
     // Test Clang detection
     let clang_output = "clang version 14.0.0";
-    assert!(matches!(CppParser::detect_compiler_type(clang_output), CompilerType::Clang));
+    assert!(matches!(
+        CppParser::detect_compiler_type(clang_output),
+        CompilerType::Clang
+    ));
 
     // Test MSVC detection
     let msvc_output = "Microsoft (R) C/C++ Optimizing Compiler Version 19.29";
-    assert!(matches!(CppParser::detect_compiler_type(msvc_output), CompilerType::Msvc));
+    assert!(matches!(
+        CppParser::detect_compiler_type(msvc_output),
+        CompilerType::Msvc
+    ));
 
     // Test default (unknown should default to GCC)
     let unknown = "some random output";
-    assert!(matches!(CppParser::detect_compiler_type(unknown), CompilerType::Gcc));
+    assert!(matches!(
+        CppParser::detect_compiler_type(unknown),
+        CompilerType::Gcc
+    ));
 
     println!("✓ Compiler type detection works correctly");
 }
-
-
 
 #[test]
 fn test_gcc_parser_with_error_code() {
@@ -212,7 +248,11 @@ src/utils.cpp:25:12: warning: unused variable 'tmp' [-Wunused-variable]
     let parser = CppParser::with_gcc();
     let issues = OutputParser::parse(&parser, output).data_or_default_owned();
 
-    assert_eq!(issues.len(), 2, "Should parse exactly 2 issues from mixed output");
+    assert_eq!(
+        issues.len(),
+        2,
+        "Should parse exactly 2 issues from mixed output"
+    );
 
     println!("✓ Mixed content parsing works correctly");
 }

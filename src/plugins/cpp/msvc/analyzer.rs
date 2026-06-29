@@ -2,7 +2,7 @@
 //! Runs Microsoft Visual C++ compiler commands and parses output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
+    run_analyzer, AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
     OutputParser, TechStack,
 };
 
@@ -20,14 +20,18 @@ impl MsvcAnalyzer {
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("/Zs");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("/Zs");
 
         // Build command directly from the command string
         let mut builder = CommandBuilder::new("cl");
-        
+
         // Add base warning options
         builder = builder.arg("/W4").arg("/EHsc").arg("/nologo");
-        
+
         // Split the command string and add as arguments
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
@@ -81,22 +85,10 @@ impl BuildAnalyzer for MsvcAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        use crate::core::run_analysis_pipeline;
-        use crate::core::stream::StageResult;
-
         let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        match run_analysis_pipeline(&self.parser, &output, options) {
-            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
-                println!("Found {} issues", result.total_issues);
-                Ok(result)
-            }
-            StageResult::Failed(warnings) => {
-                Err(AnalyzerError::ParseError(warnings.join("; ")))
-            }
-        }
+        let result = run_analyzer(&builder, &self.parser, options)?;
+        println!("Found {} issues", result.total_issues);
+        Ok(result)
     }
 
     fn parser(&self) -> &dyn OutputParser {

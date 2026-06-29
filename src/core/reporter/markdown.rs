@@ -55,7 +55,10 @@ impl MarkdownReporter {
 
         // Determining if a Lint Report
         let is_lint = all_messages.iter().any(|m| {
-            m.contains("eslint") || m.contains("clippy") || m.contains("lint") || m.contains("style")
+            m.contains("eslint")
+                || m.contains("clippy")
+                || m.contains("lint")
+                || m.contains("style")
         });
 
         if is_lint {
@@ -63,10 +66,7 @@ impl MarkdownReporter {
         }
 
         // Defaults to a generic analysis report
-        (
-            "Analysis Report".to_string(),
-            "Issues Summary".to_string(),
-        )
+        ("Analysis Report".to_string(), "Issues Summary".to_string())
     }
 }
 
@@ -108,7 +108,12 @@ impl MarkdownReporter {
         report.push_str(&format!("- **Total**: {}\n", result.total_issues));
 
         // Statistics by level, sorted by severity
-        let level_order = [IssueLevel::Error, IssueLevel::Warning, IssueLevel::Info, IssueLevel::Hint];
+        let level_order = [
+            IssueLevel::Error,
+            IssueLevel::Warning,
+            IssueLevel::Info,
+            IssueLevel::Hint,
+        ];
         for level in &level_order {
             if let Some(count) = result.issues_by_level.get(level) {
                 let icon = match level {
@@ -121,8 +126,14 @@ impl MarkdownReporter {
             }
         }
 
-        report.push_str(&format!("- **Categories**: {}\n", result.unique_patterns.len()));
-        report.push_str(&format!("- **Files Affected**: {}", result.issues_by_file.len()));
+        report.push_str(&format!(
+            "- **Categories**: {}\n",
+            result.unique_patterns.len()
+        ));
+        report.push_str(&format!(
+            "- **Files Affected**: {}",
+            result.issues_by_file.len()
+        ));
 
         // Add top error codes breakdown
         let top_codes = result.top_error_codes(5);
@@ -132,11 +143,15 @@ impl MarkdownReporter {
                 report.push_str(&format!("- `{}`: {} occurrence(s)\n", code, count));
             }
         }
-        
+
         // Add package count if we have package information
         let has_package_info = result.issues_by_package.keys().any(|k| k != "unknown");
         if has_package_info {
-            let package_count = result.issues_by_package.keys().filter(|k| *k != "unknown").count();
+            let package_count = result
+                .issues_by_package
+                .keys()
+                .filter(|k| *k != "unknown")
+                .count();
             report.push_str(&format!("\n- **Packages Affected**: {}", package_count));
         }
         report.push_str("\n\n");
@@ -146,7 +161,7 @@ impl MarkdownReporter {
             // Still show top files in minimal mode
             report.push_str("**Top Files:**\n\n");
             let mut files: Vec<_> = result.issues_by_file.iter().collect();
-            files.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+            files.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
             for (file_path, issues) in files.iter().take(5) {
                 report.push_str(&format!("- `{}`: {} issue(s)\n", file_path, issues.len()));
             }
@@ -161,7 +176,11 @@ impl MarkdownReporter {
             types.sort_by(|a, b| b.1.cmp(a.1));
 
             // In verbose mode, show all types; otherwise limit to 20
-            let type_limit = if options.verbose.is_verbose() { types.len() } else { 20 };
+            let type_limit = if options.verbose.is_verbose() {
+                types.len()
+            } else {
+                20
+            };
             for (issue_type, count) in types.iter().take(type_limit) {
                 report.push_str(&format!("- **{}**: {} occurrence(s)\n", issue_type, count));
             }
@@ -171,45 +190,70 @@ impl MarkdownReporter {
         // NEW: Statistics by package (if we have package information)
         if has_package_info {
             report.push_str("## Details by Package\n\n");
-            
+
             let mut packages: Vec<_> = result.issues_by_package.iter().collect();
-            packages.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-            
-            let package_limit = if options.verbose.is_verbose() { packages.len() } else { 10 };
-            
+            packages.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
+
+            let package_limit = if options.verbose.is_verbose() {
+                packages.len()
+            } else {
+                10
+            };
+
             for (package_name, issues) in packages.iter().take(package_limit) {
                 if *package_name == "unknown" {
                     continue;
                 }
-                
-                report.push_str(&format!("### Package: `{}` ({} issue(s))\n\n", 
-                    package_name, issues.len()));
-                
+
+                report.push_str(&format!(
+                    "### Package: `{}` ({} issue(s))\n\n",
+                    package_name,
+                    issues.len()
+                ));
+
                 // Group issues by file within this package
                 let mut files: HashMap<String, Vec<&Issue>> = HashMap::new();
                 for issue in issues.iter() {
-                    files.entry(issue.location.file_path.clone())
+                    files
+                        .entry(issue.location.file_path.clone())
                         .or_default()
                         .push(issue);
                 }
-                
-                let mut file_list: Vec<_> = files.iter().collect();
-                file_list.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-                
-                let file_limit = if options.verbose.is_verbose() { file_list.len() } else { 5 };
-                
-                for (file_path, file_issues) in file_list.iter().take(file_limit) {
-                    report.push_str(&format!("#### `{}` ({} item(s))\n\n", file_path, file_issues.len()));
-                    
-                    let issue_limit = if options.verbose.is_verbose() { file_issues.len() } else { 5 };
-                    for issue in file_issues.iter().take(issue_limit) {
-                        let location = match (issue.location.line_number, issue.location.column_number) {
-                            (Some(line), Some(col)) => format!("{}:{}", line, col),
-                            (Some(line), None) => format!("{}", line),
-                            _ => "-".to_string(),
-                        };
 
-                        let code = issue.code.as_ref().map(|c| format!(" `[{}]`", c)).unwrap_or_default();
+                let mut file_list: Vec<_> = files.iter().collect();
+                file_list.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
+
+                let file_limit = if options.verbose.is_verbose() {
+                    file_list.len()
+                } else {
+                    5
+                };
+
+                for (file_path, file_issues) in file_list.iter().take(file_limit) {
+                    report.push_str(&format!(
+                        "#### `{}` ({} item(s))\n\n",
+                        file_path,
+                        file_issues.len()
+                    ));
+
+                    let issue_limit = if options.verbose.is_verbose() {
+                        file_issues.len()
+                    } else {
+                        5
+                    };
+                    for issue in file_issues.iter().take(issue_limit) {
+                        let location =
+                            match (issue.location.line_number, issue.location.column_number) {
+                                (Some(line), Some(col)) => format!("{}:{}", line, col),
+                                (Some(line), None) => format!("{}", line),
+                                _ => "-".to_string(),
+                            };
+
+                        let code = issue
+                            .code
+                            .as_ref()
+                            .map(|c| format!(" `[{}]`", c))
+                            .unwrap_or_default();
                         let level_icon = match issue.level {
                             IssueLevel::Error => "❌",
                             IssueLevel::Warning => "⚠️",
@@ -222,13 +266,13 @@ impl MarkdownReporter {
                             level_icon, issue.level, code, location, issue.message
                         ));
                     }
-                    
+
                     if !options.verbose.is_verbose() && file_issues.len() > 5 {
                         report.push_str(&format!("- ... and {} more\n", file_issues.len() - 5));
                     }
                     report.push('\n');
                 }
-                
+
                 if !options.verbose.is_verbose() && file_list.len() > 5 {
                     report.push_str(&format!(
                         "*... and {} more files in this package*\n\n",
@@ -236,7 +280,7 @@ impl MarkdownReporter {
                     ));
                 }
             }
-            
+
             if !options.verbose.is_verbose() && packages.len() > 10 {
                 report.push_str(&format!(
                     "*... and {} more packages (use --verbose to see all)*\n\n",
@@ -249,23 +293,40 @@ impl MarkdownReporter {
         if !result.issues_by_file.is_empty() && !has_package_info {
             report.push_str("## Details by File\n\n");
             let mut files: Vec<_> = result.issues_by_file.iter().collect();
-            files.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+            files.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
 
             // In verbose mode, show all files; otherwise limit to 20
-            let file_limit = if options.verbose.is_verbose() { files.len() } else { 20 };
+            let file_limit = if options.verbose.is_verbose() {
+                files.len()
+            } else {
+                20
+            };
             for (file_path, issues) in files.iter().take(file_limit) {
-                report.push_str(&format!("### `{}` ({} item(s))\n\n", file_path, issues.len()));
+                report.push_str(&format!(
+                    "### `{}` ({} item(s))\n\n",
+                    file_path,
+                    issues.len()
+                ));
 
                 // In verbose mode, show all issues; otherwise limit to 10
-                let issue_limit = if options.verbose.is_verbose() { issues.len() } else { 10 };
+                let issue_limit = if options.verbose.is_verbose() {
+                    issues.len()
+                } else {
+                    10
+                };
                 for issue in issues.iter().take(issue_limit) {
-                    let location = match (issue.location.line_number, issue.location.column_number) {
+                    let location = match (issue.location.line_number, issue.location.column_number)
+                    {
                         (Some(line), Some(col)) => format!("{}:{}", line, col),
                         (Some(line), None) => format!("{}", line),
                         _ => "-".to_string(),
                     };
 
-                    let code = issue.code.as_ref().map(|c| format!(" `[{}]`", c)).unwrap_or_default();
+                    let code = issue
+                        .code
+                        .as_ref()
+                        .map(|c| format!(" `[{}]`", c))
+                        .unwrap_or_default();
                     let level_icon = match issue.level {
                         IssueLevel::Error => "❌",
                         IssueLevel::Warning => "⚠️",
@@ -313,6 +374,20 @@ impl Reporter for MarkdownReporter {
     }
 
     fn generate_test_report(&self, result: &TestAnalysisResult) -> Result<String, ReporterError> {
+        self.generate_test_report_internal(result)
+    }
+
+    fn generate_test_report_with_options(
+        &self,
+        result: &TestAnalysisResult,
+        _options: ReportOptions,
+    ) -> Result<String, ReporterError> {
+        self.generate_test_report_internal(result)
+    }
+}
+
+impl MarkdownReporter {
+    fn generate_test_report_internal(&self, result: &TestAnalysisResult) -> Result<String, ReporterError> {
         let mut report = String::new();
 
         // Selection of titles based on test results
@@ -335,8 +410,14 @@ impl Reporter for MarkdownReporter {
                 0.0
             };
 
-            report.push_str(&format!("- **Total**: {} test(s) (calculated: {})\n", summary.total, total_tests));
-            report.push_str(&format!("- **Passed**: ✅ {} ({:.1}%)\n", summary.passed, pass_rate));
+            report.push_str(&format!(
+                "- **Total**: {} test(s) (calculated: {})\n",
+                summary.total, total_tests
+            ));
+            report.push_str(&format!(
+                "- **Passed**: ✅ {} ({:.1}%)\n",
+                summary.passed, pass_rate
+            ));
             if summary.failed > 0 {
                 report.push_str(&format!("- **Failed**: ❌ {}\n", summary.failed));
             }
@@ -349,12 +430,18 @@ impl Reporter for MarkdownReporter {
             if summary.filtered > 0 {
                 report.push_str(&format!("- **Filtered out**: {}\n", summary.filtered));
             }
+            if summary.execution_time().is_some() {
+                report.push_str(&format!("- **Duration**: {}\n", summary.execution_time_formatted()));
+            }
             report.push('\n');
         }
 
         // Failed Test Details
         if !result.failed_tests.is_empty() {
-            report.push_str(&format!("## Failed Tests ({} item(s))\n\n", result.failed_tests.len()));
+            report.push_str(&format!(
+                "## Failed Tests ({} item(s))\n\n",
+                result.failed_tests.len()
+            ));
             for (idx, test) in result.failed_tests.iter().enumerate() {
                 report.push_str(&format!("### {}. `{}`\n\n", idx + 1, test.name));
 
@@ -380,7 +467,10 @@ impl Reporter for MarkdownReporter {
 
         // Neglected Tests
         if !result.ignored_tests.is_empty() {
-            report.push_str(&format!("## Ignored Tests ({} item(s))\n\n", result.ignored_tests.len()));
+            report.push_str(&format!(
+                "## Ignored Tests ({} item(s))\n\n",
+                result.ignored_tests.len()
+            ));
             for test in &result.ignored_tests {
                 let reason = match &test.status {
                     TestStatus::Ignored(Some(r)) => format!(" - *Reason: {}*", r),
@@ -393,7 +483,10 @@ impl Reporter for MarkdownReporter {
 
         // Passed Tests (summary only if there are many)
         if !result.passed_tests.is_empty() {
-            report.push_str(&format!("## Passed Tests ({} item(s))\n\n", result.passed_tests.len()));
+            report.push_str(&format!(
+                "## Passed Tests ({} item(s))\n\n",
+                result.passed_tests.len()
+            ));
             if result.passed_tests.len() <= 10 {
                 // List all passed tests if there are few
                 for test in &result.passed_tests {

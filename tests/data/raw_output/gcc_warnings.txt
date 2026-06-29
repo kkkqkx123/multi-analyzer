@@ -1,0 +1,4 @@
+/tmp/analyzer_test_cpp/test.cpp: In function ‘int main()’:
+/tmp/analyzer_test_cpp/test.cpp:3:9: warning: unused variable ‘unused_var’ [-Wunused-variable]
+    3 |     int unused_var = 42;
+      |         ^~~~~~~~~~

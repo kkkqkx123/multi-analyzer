@@ -1,16 +1,18 @@
 //! Report Generator Module
-//! Support for multiple output formats (Markdown, JSON, HTML)
+//! Support for multiple output formats (Markdown, JSON, HTML, Raw)
 
-use std::path::Path;
 use super::types::{AnalysisResult, ReportFormat, TestAnalysisResult, Verbosity};
+use std::path::Path;
 
-mod markdown;
-mod json;
 mod html;
+mod json;
+mod markdown;
+mod raw;
 
-pub use markdown::MarkdownReporter;
-pub use json::JsonReporter;
 pub use html::HtmlReporter;
+pub use json::JsonReporter;
+pub use markdown::MarkdownReporter;
+pub use raw::RawReporter;
 
 /// Report Generation Error
 #[derive(Debug)]
@@ -46,20 +48,6 @@ pub struct ReportOptions {
 }
 
 impl ReportOptions {
-    /// Create new report options with verbose mode
-    #[allow(dead_code)]
-    pub fn verbose() -> Self {
-        Self { verbose: Verbosity::Verbose, success_short_circuit: false, tech_stack: None }
-    }
-
-    /// Create new report options with success short-circuit enabled
-    #[allow(dead_code)]
-    pub fn with_short_circuit(mut self, tech_stack: impl Into<String>) -> Self {
-        self.success_short_circuit = true;
-        self.tech_stack = Some(tech_stack.into());
-        self
-    }
-
     /// Get the short-circuit message when no issues found
     pub fn short_circuit_message(&self) -> Option<String> {
         if self.success_short_circuit {
@@ -128,6 +116,8 @@ impl ReporterFactory {
             ReportFormat::Markdown => Box::new(MarkdownReporter::new()),
             ReportFormat::Json => Box::new(JsonReporter::new()),
             ReportFormat::Html => Box::new(HtmlReporter::new()),
+            ReportFormat::Raw => Box::new(RawReporter::new()),
+            ReportFormat::RawJson => Box::new(RawReporter::new_json_lines()),
         }
     }
 }

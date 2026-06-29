@@ -28,5 +28,3 @@ impl OutputParser for GccParser {
         <CppParser as OutputParser>::parse(&self.inner, output)
     }
 }
-
-

@@ -1,7 +1,10 @@
 //! Gradle Output Parser
 //! Parsing the output of Gradle compile/test
 
-use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestOutputParser, TestStatus, TestSummary, TestCase};
+use crate::core::{
+    Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase,
+    TestOutputParser, TestStatus, TestSummary,
+};
 
 pub struct GradleParser;
 
@@ -19,9 +22,7 @@ impl GradleParser {
         // Check for error/warning lines with file path
         // Format: /path/to/File.java:10: error: message
         if let Some((file_path, line_num, level, message)) = self.parse_file_location(trimmed) {
-            let location = Location::new(file_path)
-                .with_line(line_num)
-                .with_column(0);
+            let location = Location::new(file_path).with_line(line_num).with_column(0);
 
             return Some(Issue::new(level, message, location));
         }
@@ -159,8 +160,6 @@ impl OutputParser for GradleParser {
     }
 }
 
-
-
 impl TestOutputParser for GradleParser {
     fn parse_test_output(&self, output: &str) -> ParsedTestOutput {
         let mut result = ParsedTestOutput::new();
@@ -172,13 +171,20 @@ impl TestOutputParser for GradleParser {
         let mut failed: usize = 0;
         let mut skipped: usize = 0;
 
+        let summary_re = regex::Regex::new(
+            r"PASSED:\s*(\d+),\s*FAILED:\s*(\d+),\s*SKIPPED:\s*(\d+)",
+        )
+        .ok();
+
         while i < lines.len() {
             let line = lines[i];
 
             // Parse test execution lines: "com.example.MyTest > testMethod PASSED"
             // or "com.example.MyTest > testMethod FAILED"
             // or "com.example.MyTest > testMethod SKIPPED"
-            if line.contains(" > ") && (line.contains("PASSED") || line.contains("FAILED") || line.contains("SKIPPED")) {
+            if line.contains(" > ")
+                && (line.contains("PASSED") || line.contains("FAILED") || line.contains("SKIPPED"))
+            {
                 let parts: Vec<&str> = line.splitn(3, " > ").collect();
                 if parts.len() >= 2 {
                     let class_name = parts[0].trim();
@@ -212,7 +218,11 @@ impl TestOutputParser for GradleParser {
                         let mut j = i + 1;
                         while j < lines.len() {
                             let next_line = lines[j];
-                            if next_line.contains(" > ") && (next_line.contains("PASSED") || next_line.contains("FAILED") || next_line.contains("SKIPPED")) {
+                            if next_line.contains(" > ")
+                                && (next_line.contains("PASSED")
+                                    || next_line.contains("FAILED")
+                                    || next_line.contains("SKIPPED"))
+                            {
                                 break;
                             }
                             if next_line.trim().is_empty() {
@@ -223,8 +233,9 @@ impl TestOutputParser for GradleParser {
                             j += 1;
                         }
 
-                        if let Some(test) = result.failed_tests.iter_mut()
-                            .find(|t| t.name == full_name) {
+                        if let Some(test) =
+                            result.failed_tests.iter_mut().find(|t| t.name == full_name)
+                        {
                             test.failure_details = Some(details.join("\n"));
                         }
                     } else if last_part.starts_with("SKIPPED") {
@@ -247,10 +258,13 @@ impl TestOutputParser for GradleParser {
                     {
                         // Parse time from format like "1.234s"
                         let time_val = time_str.trim_end_matches('s').parse().ok();
-                        if let Some(test) = result.failed_tests.iter_mut()
+                        if let Some(test) = result
+                            .failed_tests
+                            .iter_mut()
                             .chain(result.passed_tests.iter_mut())
                             .chain(result.ignored_tests.iter_mut())
-                            .find(|t| t.name == full_name) {
+                            .find(|t| t.name == full_name)
+                        {
                             test.execution_time = time_val;
                         }
                     }
@@ -259,14 +273,20 @@ impl TestOutputParser for GradleParser {
 
             // Parse summary line: "PASSED: 100, FAILED: 1, SKIPPED: 2"
             if line.contains("PASSED:") && line.contains("FAILED:") {
-                let re = regex::Regex::new(
-                    r"PASSED:\s*(\d+),\s*FAILED:\s*(\d+),\s*SKIPPED:\s*(\d+)"
-                ).ok();
-                if let Some(re) = re {
+                if let Some(re) = &summary_re {
                     if let Some(caps) = re.captures(line) {
-                        passed = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(passed);
-                        failed = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(failed);
-                        skipped = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(skipped);
+                        passed = caps
+                            .get(1)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(passed);
+                        failed = caps
+                            .get(2)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(failed);
+                        skipped = caps
+                            .get(3)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(skipped);
                     }
                 }
             }
@@ -330,5 +350,4 @@ mod tests {
         assert_eq!(issue.location.file_path, "/path/to/File.kt");
         assert_eq!(issue.location.line_number, Some(15));
     }
-
 }

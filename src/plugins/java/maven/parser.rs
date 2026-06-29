@@ -1,7 +1,10 @@
 //! Maven Output Parser
 //Parsing the output of Maven compile/test Parsing the output of Maven compile/test
 
-use crate::core::{Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestOutputParser, TestStatus, TestSummary, TestCase};
+use crate::core::{
+    Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase,
+    TestOutputParser, TestStatus, TestSummary,
+};
 
 pub struct MavenParser;
 
@@ -67,12 +70,12 @@ impl MavenParser {
         if !content.contains(':') || content.starts_with("Failed to execute goal") {
             let location = Location::new("pom.xml");
             let mut issue = Issue::new(level, content.to_string(), location);
-            
+
             // Try to extract module name from the message
             if let Some(module) = self.extract_module_from_message(line) {
                 issue = issue.with_package(module);
             }
-            
+
             return Some(issue);
         }
 
@@ -94,7 +97,10 @@ impl MavenParser {
             let parts: Vec<&str> = coords.split(',').collect();
             if !parts.is_empty() {
                 let line_num = parts[0].trim().parse::<u32>().ok()?;
-                let col_num = parts.get(1).and_then(|p| p.trim().parse::<u32>().ok()).unwrap_or(0);
+                let col_num = parts
+                    .get(1)
+                    .and_then(|p| p.trim().parse::<u32>().ok())
+                    .unwrap_or(0);
                 return Some((file_path.to_string(), line_num, col_num));
             }
         }
@@ -183,8 +189,6 @@ impl OutputParser for MavenParser {
     }
 }
 
-
-
 impl TestOutputParser for MavenParser {
     fn parse_test_output(&self, output: &str) -> ParsedTestOutput {
         let mut result = ParsedTestOutput::new();
@@ -197,20 +201,34 @@ impl TestOutputParser for MavenParser {
         let mut errors: usize = 0;
         let mut skipped: usize = 0;
 
+        let summary_re = regex::Regex::new(
+            r"Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)",
+        )
+        .ok();
+
         while i < lines.len() {
             let line = lines[i];
 
             // Parse test results line: "Tests run: 5, Failures: 1, Errors: 0, Skipped: 0"
             if line.contains("Tests run:") {
-                let re = regex::Regex::new(
-                    r"Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)"
-                ).ok();
-                if let Some(re) = re {
+                if let Some(re) = &summary_re {
                     if let Some(caps) = re.captures(line) {
-                        tests_run = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                        failures = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                        errors = caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-                        skipped = caps.get(4).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                        tests_run = caps
+                            .get(1)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(0);
+                        failures = caps
+                            .get(2)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(0);
+                        errors = caps
+                            .get(3)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(0);
+                        skipped = caps
+                            .get(4)
+                            .and_then(|m| m.as_str().parse().ok())
+                            .unwrap_or(0);
                     }
                 }
             }

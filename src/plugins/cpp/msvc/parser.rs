@@ -28,5 +28,3 @@ impl OutputParser for MsvcParser {
         <CppParser as OutputParser>::parse(&self.inner, output)
     }
 }
-
-

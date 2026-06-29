@@ -17,7 +17,9 @@
   - C++/Clang: `clang compile`
   - C++/MSVC: `msvc compile`
 - **插件化架构**：可轻松扩展支持新工具
-- **多种报告格式**：Markdown、JSON、HTML
+- **命令自动识别**：`analyzer run` 直接运行原始 shell 命令，自动识别技术栈
+- **命令预览**：`analyzer rewrite` 预览命令转换结果，不执行分析
+- **多种报告格式**：Markdown、JSON、HTML、Raw (管道分隔)、Raw JSON (JSON Lines)
 - **灵活过滤**：按警告或特定文件路径进行过滤
 - **配置支持**：通过 `.analyzer.toml` 自定义配置
 
@@ -37,9 +39,17 @@ cargo build --release
 
 ## 使用方法
 
+### 基本用法
+
 ```bash
-# 基本用法
+# 指定技术栈和子命令
 analyzer <tech-stack> <subcommand> [options]
+
+# 直接运行原始命令（自动识别技术栈）
+analyzer run <shell_command> [options]
+
+# 预览原始命令对应的 analyzer 命令（不执行）
+analyzer rewrite <shell_command>
 
 # 分析 Rust 项目
 analyzer cargo check
@@ -85,11 +95,73 @@ analyzer cpp clang compile
 analyzer cpp msvc compile
 ```
 
+### `analyzer run` — 直接运行命令
+
+无需手动指定技术栈，`run` 子命令会自动识别 shell 命令并调度到正确的分析器：
+
+```bash
+# 直接传递 shell 命令
+analyzer run "cargo check --all-targets"
+analyzer run "npm run lint"
+analyzer run "pytest -v tests/"
+analyzer run "go vet ./..."
+analyzer run "mvn test -pl core"
+
+# 支持环境变量前缀
+analyzer run "RUST_BACKTRACE=1 cargo test"
+```
+
+退出码：
+- 0 — 成功识别并执行
+- 1 — 无匹配规则或执行失败
+- 2 — 子命令不支持
+
+### `analyzer rewrite` — 预览命令转换
+
+查看原始命令会被转换为什么形式的 analyzer 命令，不实际执行分析：
+
+```bash
+# 输出转换后的命令
+analyzer rewrite "cargo check --all-targets"
+# 输出: analyzer cargo "check" --all-targets
+
+analyzer rewrite "npm run lint"
+# 输出: analyzer npm "run lint"
+```
+
+退出码：
+- 0 — 成功转换（命令打印到 stdout）
+- 1 — 无匹配规则（无输出）
+
 ### 选项
 
 - `--filter-warnings`：过滤所有警告，仅显示错误
 - `--filter-paths <paths>`：按文件路径过滤错误（逗号分隔）
 - `--output <file>`：指定输出文件路径（默认：analysis_report.md）
+- `--format <format>`：指定报告格式：`markdown`、`json`、`html`、`raw`、`raw-json`
+- `--stdout`：将报告输出到标准输出而非写入文件
+
+### 报告格式
+
+| 格式       | 说明                                       | 文件扩展名 |
+| ---------- | ------------------------------------------ | ---------- |
+| `markdown` | 人类可读的统计和分类报告（默认）            | `.md`      |
+| `json`     | 机器可读格式，适合 CI/CD 集成               | `.json`    |
+| `html`     | 用于网页查看的样式化 HTML 报告               | `.html`    |
+| `raw`      | 管道分隔纯文本，适合脚本处理                 | `.txt`     |
+| `raw-json` | JSON Lines 格式，每行一个 JSON 对象          | `.jsonl`   |
+
+Raw 格式输出示例：
+```
+error|E0308|src/main.rs:42:10|mismatched types
+warning|unused|src/lib.rs:15:5|unused variable: x
+```
+
+Raw JSON 格式输出示例：
+```json
+{"level":"error","code":"E0308","file":"src/main.rs","line":42,"column":10,"message":"mismatched types"}
+{"level":"warning","code":"unused","file":"src/lib.rs","line":15,"column":5,"message":"unused variable: x"}
+```
 
 ## 配置
 
@@ -118,6 +190,8 @@ test_framework = "jest"
 - **Markdown**：人类可读的统计和分类报告
 - **JSON**：机器可读格式，适合 CI/CD 集成
 - **HTML**：用于网页查看的样式化 HTML 报告
+- **Raw**：管道分隔的纯文本，适合脚本处理和管道操作
+- **Raw JSON (JSON Lines)**：每行一个 JSON 对象，便于逐行解析
 
 报告包含：
 
@@ -140,9 +214,10 @@ CLI 入口 → 核心模块 → 插件模块
 | `types.rs`         | 通用数据类型（Issue、Location、AnalysisResult） |
 | `parser.rs`        | 输出解析接口                                    |
 | `analyzer.rs`      | 统一分析器接口                                  |
-| `reporter/*`       | 报告生成（Markdown/JSON/HTML）                  |
+| `reporter/*`       | 报告生成（Markdown/JSON/HTML/Raw）              |
 | `command.rs`       | 命令构建和执行                                  |
 | `base_analyzer.rs` | 通用分析器实现                                  |
+| `discover/*`       | 命令发现与重写引擎（rules/lexer/registry）      |
 
 ### 插件模块 (plugins/)
 

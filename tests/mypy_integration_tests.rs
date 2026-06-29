@@ -4,7 +4,10 @@
 use std::path::PathBuf;
 
 mod common;
-use common::{fixtures_dir, is_command_available, raw_output_dir, run_command, save_raw_output, generate_report};
+use common::{
+    fixtures_dir, generate_report, is_command_available, raw_output_dir, run_command,
+    save_raw_output,
+};
 
 fn python_project_path() -> PathBuf {
     fixtures_dir().join("python-project")
@@ -20,8 +23,8 @@ fn ensure_mypy() -> Result<(), String> {
 
 #[test]
 fn test_mypy_basic_output() {
-    use analyzer::plugins::python::mypy::parser::MypyParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::python::mypy::parser::MypyParser;
 
     if let Err(e) = ensure_mypy() {
         println!("Skipping test: {}", e);
@@ -48,7 +51,7 @@ fn test_mypy_basic_output() {
         "Mypy Basic",
         "mypy --show-column-numbers .",
         &issues,
-        Some("raw_output/mypy_basic.txt")
+        Some("raw_output/mypy_basic.txt"),
     );
 
     println!("=== Mypy Basic Output ===");
@@ -83,8 +86,8 @@ fn test_mypy_basic_output() {
 
 #[test]
 fn test_mypy_strict_output() {
-    use analyzer::plugins::python::mypy::parser::MypyParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::python::mypy::parser::MypyParser;
 
     if ensure_mypy().is_err() {
         println!("Skipping test: mypy is not available");
@@ -115,14 +118,17 @@ fn test_mypy_strict_output() {
         "Mypy Strict",
         "mypy --strict --show-column-numbers .",
         &issues,
-        Some("raw_output/mypy_strict.txt")
+        Some("raw_output/mypy_strict.txt"),
     );
 
     println!("=== Mypy Strict Output ===");
     println!("{}", output);
 
     // Strict mode should have more errors
-    let error_count = output.lines().filter(|line| line.contains("error:")).count();
+    let error_count = output
+        .lines()
+        .filter(|line| line.contains("error:"))
+        .count();
 
     println!("Found {} error lines", error_count);
 
@@ -134,8 +140,8 @@ fn test_mypy_strict_output() {
 
 #[test]
 fn test_mypy_specific_file() {
-    use analyzer::plugins::python::mypy::parser::MypyParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::python::mypy::parser::MypyParser;
 
     if ensure_mypy().is_err() {
         println!("Skipping test: mypy is not available");
@@ -145,7 +151,11 @@ fn test_mypy_specific_file() {
     let project_path = python_project_path();
     let main_py = project_path.join("src/main.py");
 
-    let output = match run_command("mypy", &["--show-column-numbers", main_py.to_str().unwrap()], &project_path) {
+    let output = match run_command(
+        "mypy",
+        &["--show-column-numbers", main_py.to_str().unwrap()],
+        &project_path,
+    ) {
         Ok(output) => output,
         Err(e) => {
             panic!("Failed to run mypy on specific file: {}", e);
@@ -163,7 +173,7 @@ fn test_mypy_specific_file() {
         "Mypy Specific File",
         "mypy --show-column-numbers src/main.py",
         &issues,
-        Some("raw_output/mypy_specific_file.txt")
+        Some("raw_output/mypy_specific_file.txt"),
     );
 
     println!("=== Mypy Specific File Output ===");
@@ -179,8 +189,8 @@ fn test_mypy_specific_file() {
 
 #[test]
 fn test_mypy_with_ignore_missing_imports() {
-    use analyzer::plugins::python::mypy::parser::MypyParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::python::mypy::parser::MypyParser;
 
     if ensure_mypy().is_err() {
         println!("Skipping test: mypy is not available");
@@ -191,11 +201,7 @@ fn test_mypy_with_ignore_missing_imports() {
 
     let output = match run_command(
         "mypy",
-        &[
-            "--show-column-numbers",
-            "--ignore-missing-imports",
-            ".",
-        ],
+        &["--show-column-numbers", "--ignore-missing-imports", "."],
         &project_path,
     ) {
         Ok(output) => output,
@@ -215,7 +221,7 @@ fn test_mypy_with_ignore_missing_imports() {
         "Mypy Ignore Imports",
         "mypy --show-column-numbers --ignore-missing-imports .",
         &issues,
-        Some("raw_output/mypy_ignore_imports.txt")
+        Some("raw_output/mypy_ignore_imports.txt"),
     );
 
     println!("=== Mypy with --ignore-missing-imports Output ===");
@@ -250,12 +256,14 @@ fn test_validate_mypy_outputs() {
     // Read and validate saved mypy output files
     let output_dir = raw_output_dir();
 
-    for entry in std::fs::read_dir(&output_dir).expect("Failed to read output directory").flatten() {
+    for entry in std::fs::read_dir(&output_dir)
+        .expect("Failed to read output directory")
+        .flatten()
+    {
         let path = entry.path();
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
 
-        if filename.starts_with("mypy_") && path.extension().map(|e| e == "txt").unwrap_or(false)
-        {
+        if filename.starts_with("mypy_") && path.extension().map(|e| e == "txt").unwrap_or(false) {
             let content = std::fs::read_to_string(&path).expect("Failed to read output file");
             println!("Validating: {}", path.display());
             validate_mypy_output(&content);

@@ -52,7 +52,10 @@ fn test_command_execute_with_status_success() {
 
     let output = result.unwrap();
     assert!(output.success(), "Command should return success status");
-    assert!(output.combined.contains("Hello, World!"), "Output should contain the echoed text");
+    assert!(
+        output.combined.contains("Hello, World!"),
+        "Output should contain the echoed text"
+    );
     assert!(output.code().is_some(), "Exit code should be available");
     assert_eq!(output.code(), Some(0), "Exit code should be 0 for success");
 }
@@ -73,7 +76,11 @@ fn test_command_execute_with_status_failure() {
     let output = result.unwrap();
     assert!(!output.success(), "Command should return failure status");
     assert!(output.code().is_some(), "Exit code should be available");
-    assert_ne!(output.code(), Some(0), "Exit code should be non-zero for failure");
+    assert_ne!(
+        output.code(),
+        Some(0),
+        "Exit code should be non-zero for failure"
+    );
 }
 
 #[test]
@@ -91,7 +98,10 @@ fn test_command_execute_with_status_stderr_capture() {
     let output = result.unwrap();
     assert!(output.success());
     // Combined output should contain stderr
-    assert!(output.combined.contains("error message"), "Combined output should capture stderr");
+    assert!(
+        output.combined.contains("error message"),
+        "Combined output should capture stderr"
+    );
 }
 
 #[test]
@@ -115,7 +125,10 @@ fn test_command_execute_with_status_nonexistent_command() {
     let result = builder.execute_with_status();
 
     // Should return an error because the command cannot be found
-    assert!(result.is_err(), "Non-existent command should return an error");
+    assert!(
+        result.is_err(),
+        "Non-existent command should return an error"
+    );
 }
 
 #[test]
@@ -130,6 +143,12 @@ fn test_command_output_fields() {
 
     // Check that stdout and combined are populated
     assert!(!result.stdout.is_empty(), "stdout should not be empty");
-    assert!(result.stdout.contains("Hello, World!"), "stdout should contain the output");
-    assert!(result.combined.contains("Hello, World!"), "combined should contain the output");
+    assert!(
+        result.stdout.contains("Hello, World!"),
+        "stdout should contain the output"
+    );
+    assert!(
+        result.combined.contains("Hello, World!"),
+        "combined should contain the output"
+    );
 }

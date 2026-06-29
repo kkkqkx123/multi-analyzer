@@ -1,8 +1,8 @@
 //! Test analyzer trait definition
 //! Define a uniform interface for test execution
 
-use super::types::{Issue, TestCase, TestSummary, AnalyzeOptions, TestAnalysisResult};
 use super::command::CommandBuilder;
+use super::types::{AnalyzeOptions, Issue, TestAnalysisResult, TestCase, TestSummary};
 
 /// Test Analyzer Error
 #[derive(Debug)]

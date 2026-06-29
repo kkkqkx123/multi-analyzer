@@ -4,7 +4,9 @@
 use std::path::PathBuf;
 
 mod common;
-use common::{fixtures_dir, is_command_available, run_command, save_raw_output, read_sample, generate_report};
+use common::{
+    fixtures_dir, generate_report, is_command_available, read_sample, run_command, save_raw_output,
+};
 
 fn maven_project_path() -> PathBuf {
     fixtures_dir().join("maven-project")
@@ -20,8 +22,8 @@ fn ensure_maven() -> Result<(), String> {
 
 #[test]
 fn test_maven_compile_output() {
-    use analyzer::plugins::java::maven::parser::MavenParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::java::maven::parser::MavenParser;
 
     if let Err(e) = ensure_maven() {
         println!("Skipping test: {}", e);
@@ -59,7 +61,7 @@ fn test_maven_compile_output() {
         "Maven Compile",
         "mvn compile",
         &issues,
-        Some("raw_output/maven_compile.txt")
+        Some("raw_output/maven_compile.txt"),
     );
 
     println!("=== Maven Compile Output ===");
@@ -92,8 +94,8 @@ fn test_maven_compile_output() {
 
 #[test]
 fn test_maven_test_output() {
-    use analyzer::plugins::java::maven::parser::MavenParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::java::maven::parser::MavenParser;
 
     if let Err(e) = ensure_maven() {
         println!("Skipping test: {}", e);
@@ -128,7 +130,7 @@ fn test_maven_test_output() {
         "Maven Test",
         "mvn test",
         &issues,
-        Some("raw_output/maven_test.txt")
+        Some("raw_output/maven_test.txt"),
     );
 
     println!("=== Maven Test Output ===");
@@ -136,9 +138,9 @@ fn test_maven_test_output() {
 
     // Validation Test Output
     let lines: Vec<&str> = output.lines().collect();
-    let has_test_output = lines.iter().any(|line: &&str| {
-        line.contains("Tests run:") || line.contains("T E S T S")
-    });
+    let has_test_output = lines
+        .iter()
+        .any(|line: &&str| line.contains("Tests run:") || line.contains("T E S T S"));
 
     if has_test_output {
         println!("✓ Found Maven test output");
@@ -164,8 +166,17 @@ fn test_validate_maven_outputs() {
     println!("Found {} issues in sample output", issues.len());
 
     let result = AnalysisResult::from_issues(issues);
-    println!("Total errors: {}", result.issues_by_level.get(&IssueLevel::Error).unwrap_or(&0));
-    println!("Total warnings: {}", result.issues_by_level.get(&IssueLevel::Warning).unwrap_or(&0));
+    println!(
+        "Total errors: {}",
+        result.issues_by_level.get(&IssueLevel::Error).unwrap_or(&0)
+    );
+    println!(
+        "Total warnings: {}",
+        result
+            .issues_by_level
+            .get(&IssueLevel::Warning)
+            .unwrap_or(&0)
+    );
 
     // Verify parsing results
     assert!(
@@ -177,10 +188,9 @@ fn test_validate_maven_outputs() {
     for (file_path, file_issues) in &result.issues_by_file {
         println!("  File: {} - {} issues", file_path, file_issues.len());
         for issue in file_issues {
-            println!("    [{:?}] Line {:?}: {}",
-                issue.level,
-                issue.location.line_number,
-                issue.message
+            println!(
+                "    [{:?}] Line {:?}: {}",
+                issue.level, issue.location.line_number, issue.message
             );
         }
     }
@@ -188,16 +198,25 @@ fn test_validate_maven_outputs() {
 
 #[test]
 fn test_maven_parser_specific_patterns() {
-    use analyzer::plugins::java::maven::parser::MavenParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::java::maven::parser::MavenParser;
 
     let parser = MavenParser::new();
 
     // Testing various Maven error formats by parsing full output
     let test_cases = vec![
-        ("[ERROR] /src/main/java/App.java:[10,5] error: cannot find symbol", "error"),
-        ("[WARNING] /src/main/java/App.java:[20,10] warning: [unchecked] unchecked conversion", "warning"),
-        ("[ERROR] /src/test/java/Test.java:[5,1] error: package org.junit does not exist", "error"),
+        (
+            "[ERROR] /src/main/java/App.java:[10,5] error: cannot find symbol",
+            "error",
+        ),
+        (
+            "[WARNING] /src/main/java/App.java:[20,10] warning: [unchecked] unchecked conversion",
+            "warning",
+        ),
+        (
+            "[ERROR] /src/test/java/Test.java:[5,1] error: package org.junit does not exist",
+            "error",
+        ),
     ];
 
     println!("=== Testing Maven Parser Patterns ===");
@@ -205,16 +224,27 @@ fn test_maven_parser_specific_patterns() {
         let issues = parser.parse(line).data_or_default_owned();
         let found = !issues.is_empty();
         let status = if found { "✓" } else { "✗" };
-        println!("{} Line: '{}' - found issue: {} (level: {:?})",
-            status, line, found, issues.first().map(|i| &i.level));
+        println!(
+            "{} Line: '{}' - found issue: {} (level: {:?})",
+            status,
+            line,
+            found,
+            issues.first().map(|i| &i.level)
+        );
         assert!(found, "Should parse issue from line: {}", line);
-        
+
         if expected_level == "error" {
-            assert!(matches!(issues[0].level, analyzer::core::IssueLevel::Error),
-                "Should be error level: {}", line);
+            assert!(
+                matches!(issues[0].level, analyzer::core::IssueLevel::Error),
+                "Should be error level: {}",
+                line
+            );
         } else if expected_level == "warning" {
-            assert!(matches!(issues[0].level, analyzer::core::IssueLevel::Warning),
-                "Should be warning level: {}", line);
+            assert!(
+                matches!(issues[0].level, analyzer::core::IssueLevel::Warning),
+                "Should be warning level: {}",
+                line
+            );
         }
     }
 }

@@ -3,14 +3,16 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio, ExitStatus};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use std::collections::HashMap;
 
 use super::analyzer::AnalyzerError;
+use super::stream::{FilterMode, StreamResult};
 
 /// Default command timeout (5 minutes)
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
@@ -234,11 +236,27 @@ impl CommandBuilder {
         cmd
     }
 
+    /// Get the full command string for filter registry lookup (e.g. "cargo clippy --all-targets").
+    pub fn command_string(&self) -> String {
+        let mut parts = vec![self.program.as_str()];
+        parts.extend(self.args.iter().map(|s| s.as_str()));
+        parts.join(" ")
+    }
+
     /// Execute command and capture output (with timeout)
     /// Returns the combined stdout and stderr output
     pub fn execute(&self) -> Result<String, AnalyzerError> {
         let output = self.execute_with_status()?;
-        Ok(output.combined)
+        let mut combined = output.combined;
+
+        let exit_code = output.status.code().unwrap_or(1);
+        let cmd_slug = self.command_string();
+        if let Some(hint) = crate::config::tee_writer::tee_and_hint(&combined, &cmd_slug, exit_code) {
+            combined.push('\n');
+            combined.push_str(&hint);
+        }
+
+        Ok(combined)
     }
 
     /// Execute command and capture output with full status information
@@ -276,9 +294,9 @@ impl CommandBuilder {
             let _ = tx.send(output);
         });
 
-        let result = rx.recv_timeout(timeout).map_err(|_| {
-            AnalyzerError::Timeout(timeout)
-        })?;
+        let result = rx
+            .recv_timeout(timeout)
+            .map_err(|_| AnalyzerError::Timeout(timeout))?;
 
         let output = result.map_err(|e| {
             AnalyzerError::CommandFailed(format!(
@@ -298,6 +316,128 @@ impl CommandBuilder {
             status: output.status,
         })
     }
+
+    /// Execute command with streaming line-by-line filtering.
+    ///
+    /// Spawns the command, reads stdout/stderr in parallel threads,
+    /// merges via mpsc channel, and applies a LineFilter to each line.
+    /// Returns raw output plus filtered result.
+    ///
+    /// # Modes
+    /// - `FilterMode::Streaming(filter)`: apply line filter during execution (memory efficient)
+    /// - `FilterMode::Passthrough`: inherit stdio, don't capture output
+    pub fn execute_streaming(&self, mode: FilterMode<'_>) -> Result<StreamResult, AnalyzerError> {
+        match mode {
+            FilterMode::Passthrough => {
+                let mut cmd = self.build();
+                cmd.stdin(Stdio::inherit());
+                cmd.stdout(Stdio::inherit());
+                cmd.stderr(Stdio::inherit());
+                let status = cmd.status().map_err(|e| {
+                    AnalyzerError::CommandFailed(format!(
+                        "Failed to execute {}: {}",
+                        self.program, e
+                    ))
+                })?;
+                Ok(StreamResult {
+                    exit_code: status.code().unwrap_or(1),
+                    raw_stdout: None,
+                    raw_stderr: None,
+                    filtered: String::new(),
+                })
+            }
+            FilterMode::Streaming(mut filter) => {
+                let mut cmd = self.build();
+                cmd.stdout(Stdio::piped());
+                cmd.stderr(Stdio::piped());
+
+                if self.options.verbose {
+                    println!("Running: {} {}", self.program, self.args.join(" "));
+                }
+
+                let mut child = cmd.spawn().map_err(|e| {
+                    AnalyzerError::CommandFailed(format!("Failed to spawn {}: {}", self.program, e))
+                })?;
+
+                let stdout = child.stdout.take().ok_or_else(|| {
+                    AnalyzerError::CommandFailed("No child stdout handle".to_string())
+                })?;
+                let stderr = child.stderr.take().ok_or_else(|| {
+                    AnalyzerError::CommandFailed("No child stderr handle".to_string())
+                })?;
+
+                #[derive(Debug)]
+                enum StreamLine {
+                    Stdout(String),
+                    Stderr(String),
+                }
+
+                let (tx, rx) = mpsc::channel::<StreamLine>();
+                let tx_out = tx.clone();
+
+                thread::spawn(move || {
+                    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                        if tx_out.send(StreamLine::Stdout(line)).is_err() {
+                            break;
+                        }
+                    }
+                });
+
+                let tx_err = tx;
+                thread::spawn(move || {
+                    for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                        if tx_err.send(StreamLine::Stderr(line)).is_err() {
+                            break;
+                        }
+                    }
+                });
+
+                let mut raw_stdout = String::new();
+                let mut raw_stderr = String::new();
+                let mut filtered = String::new();
+                let collect_raw = self.options.verbose;
+
+                for msg in rx {
+                    match msg {
+                        StreamLine::Stdout(line) => {
+                            if collect_raw {
+                                raw_stdout.push_str(&line);
+                                raw_stdout.push('\n');
+                            }
+                            if let Some(f) = filter.feed_line(&line) {
+                                filtered.push_str(&f);
+                                filtered.push('\n');
+                            }
+                        }
+                        StreamLine::Stderr(line) => {
+                            if collect_raw {
+                                raw_stderr.push_str(&line);
+                                raw_stderr.push('\n');
+                            }
+                            if let Some(f) = filter.feed_line(&line) {
+                                filtered.push_str(&f);
+                                filtered.push('\n');
+                            }
+                        }
+                    }
+                }
+
+                for tail_line in filter.on_complete() {
+                    filtered.push_str(&tail_line);
+                    filtered.push('\n');
+                }
+
+                let status = child.wait().map_err(AnalyzerError::IoError)?;
+
+                Ok(StreamResult {
+                    exit_code: status.code().unwrap_or(1),
+                    raw_stdout: if collect_raw { Some(raw_stdout) } else { None },
+                    raw_stderr: if collect_raw { Some(raw_stderr) } else { None },
+                    filtered,
+                })
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -307,10 +447,7 @@ mod tests {
     #[test]
     fn test_resolve_command_cargo() {
         let resolved = resolve_command("cargo");
-        assert!(
-            resolved.is_some(),
-            "cargo should be found in PATH"
-        );
+        assert!(resolved.is_some(), "cargo should be found in PATH");
     }
 
     #[test]

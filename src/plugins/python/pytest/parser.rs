@@ -2,8 +2,8 @@
 //! Parsing the output of pytest
 
 use crate::core::{
-    Issue, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase,
-    TestOutputParser, TestStatus, TestSummary,
+    Issue, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase, TestOutputParser,
+    TestStatus, TestSummary,
 };
 
 pub struct PytestParser;
@@ -18,9 +18,7 @@ impl PytestParser {
     /// test_file.py::test_function - AssertionError: assert 1 == 2
     fn parse_failure_line(&self, line: &str) -> Option<(String, String, Option<Location>)> {
         // Match format: file.py::test_name - ExceptionType: message
-        let re = regex::Regex::new(
-            r"^(\S+\.py)::(\S+)\s+-\s+(.+)$"
-        ).ok()?;
+        let re = regex::Regex::new(r"^(\S+\.py)::(\S+)\s+-\s+(.+)$").ok()?;
 
         let caps = re.captures(line)?;
         let file_path = caps.get(1)?.as_str().to_string();
@@ -41,8 +39,9 @@ impl PytestParser {
     pub fn parse_test_case_line(&self, line: &str) -> Option<TestCase> {
         // Match format: file.py::test_name STATUS [extra]
         let re = regex::Regex::new(
-            r"^(\S+\.py)::(\S+)\s+(PASSED|FAILED|SKIPPED|ERROR|XFAIL|XPASS)(?:\s+\[(.+)\])?$"
-        ).ok()?;
+            r"^(\S+\.py)::(\S+)\s+(PASSED|FAILED|SKIPPED|ERROR|XFAIL|XPASS)(?:\s+\[(.+)\])?$",
+        )
+        .ok()?;
 
         let caps = re.captures(line)?;
         let file_path = caps.get(1)?.as_str().to_string();
@@ -72,8 +71,7 @@ impl PytestParser {
 
         let location = Location::new(file_path);
 
-        let mut test_case = TestCase::new(test_name, status)
-            .with_location(location);
+        let mut test_case = TestCase::new(test_name, status).with_location(location);
 
         if let Some(time) = execution_time {
             test_case = test_case.with_execution_time(time);
@@ -90,8 +88,9 @@ impl PytestParser {
         // Match summary line with various counts including xfailed/xpassed
         // Format: "8 passed, 1 skipped, 1 xfailed, 1 failed in 0.15s"
         let re = regex::Regex::new(
-            r"(\d+)\s+passed.*?(\d+)\s+skipped.*?(\d+)\s+xfailed.*?(\d+)\s+failed.*?in\s+([\d.]+)s"
-        ).ok()?;
+            r"(\d+)\s+passed.*?(\d+)\s+skipped.*?(\d+)\s+xfailed.*?(\d+)\s+failed.*?in\s+([\d.]+)s",
+        )
+        .ok()?;
 
         if let Some(caps) = re.captures(line) {
             let passed: usize = caps.get(1)?.as_str().parse().ok()?;
@@ -102,7 +101,7 @@ impl PytestParser {
 
             return Some(TestSummary {
                 total: passed + failed + skipped + xfailed,
-                passed: passed + xfailed,  // xfailed counts as passed
+                passed: passed + xfailed, // xfailed counts as passed
                 failed,
                 ignored: skipped,
                 measured: 0,
@@ -114,8 +113,9 @@ impl PytestParser {
         // Match summary line with standard counts
         // Format: "5 passed, 2 failed, 1 skipped in 0.05s"
         let re2 = regex::Regex::new(
-            r"(\d+)\s+passed.*?(\d+)\s+failed.*?(\d+)\s+skipped.*?in\s+([\d.]+)s"
-        ).ok()?;
+            r"(\d+)\s+passed.*?(\d+)\s+failed.*?(\d+)\s+skipped.*?in\s+([\d.]+)s",
+        )
+        .ok()?;
 
         if let Some(caps) = re2.captures(line) {
             let passed: usize = caps.get(1)?.as_str().parse().ok()?;
@@ -135,9 +135,7 @@ impl PytestParser {
         }
 
         // Alternative format without skipped
-        let re3 = regex::Regex::new(
-            r"(\d+)\s+passed.*?(\d+)\s+failed.*?in\s+([\d.]+)s"
-        ).ok()?;
+        let re3 = regex::Regex::new(r"(\d+)\s+passed.*?(\d+)\s+failed.*?in\s+([\d.]+)s").ok()?;
 
         if let Some(caps) = re3.captures(line) {
             let passed: usize = caps.get(1)?.as_str().parse().ok()?;
@@ -156,9 +154,7 @@ impl PytestParser {
         }
 
         // Format with only passed: "5 passed in 0.08s"
-        let re4 = regex::Regex::new(
-            r"(\d+)\s+passed\s+in\s+([\d.]+)s"
-        ).ok()?;
+        let re4 = regex::Regex::new(r"(\d+)\s+passed\s+in\s+([\d.]+)s").ok()?;
 
         if let Some(caps) = re4.captures(line) {
             let passed: usize = caps.get(1)?.as_str().parse().ok()?;
@@ -185,9 +181,9 @@ impl PytestParser {
         //   some_code
         // SomeException: message
 
-        let file_re = regex::Regex::new(
-            r#"^\s*File\s+"([^"]+)"\s*,\s*line\s+(\d+)\s*,\s*in\s+(.+)$"#
-        ).ok()?;
+        let file_re =
+            regex::Regex::new(r#"^\s*File\s+"([^"]+)"\s*,\s*line\s+(\d+)\s*,\s*in\s+(.+)$"#)
+                .ok()?;
 
         let mut last_file_location: Option<(String, u32, String)> = None;
         let mut error_message: Option<String> = None;
@@ -220,7 +216,11 @@ impl PytestParser {
     }
 
     /// Parse short test summary info section
-    fn parse_short_test_summary(&self, lines: &[&str], start_index: usize) -> Vec<(String, String)> {
+    fn parse_short_test_summary(
+        &self,
+        lines: &[&str],
+        start_index: usize,
+    ) -> Vec<(String, String)> {
         let mut failures = Vec::new();
         let re = regex::Regex::new(r"^(FAILED|ERROR)\s+(\S+::\S+)\s+-\s+(.+)$").ok();
 
@@ -283,8 +283,16 @@ impl TestOutputParser for PytestParser {
                 for (test_name, error_msg) in failures {
                     // Find and update the failed test with error message
                     if let Some(test) = result.failed_tests.iter_mut().find(|t| {
-                        let full_name = format!("{}::{}" , t.location.as_ref().map(|l| l.file_path.clone()).unwrap_or_default(), t.name);
-                        full_name == test_name || t.name == test_name.split("::").last().unwrap_or(&test_name)
+                        let full_name = format!(
+                            "{}::{}",
+                            t.location
+                                .as_ref()
+                                .map(|l| l.file_path.clone())
+                                .unwrap_or_default(),
+                            t.name
+                        );
+                        full_name == test_name
+                            || t.name == test_name.split("::").last().unwrap_or(&test_name)
                     }) {
                         test.failure_details = Some(error_msg);
                     }
@@ -339,7 +347,8 @@ impl TestOutputParser for PytestParser {
                     // Start of a new failure detail block
                     if let Some((name, details)) = current_failure.take() {
                         // Save previous failure
-                        if let Some(test) = result.failed_tests.iter_mut().find(|t| t.name == name) {
+                        if let Some(test) = result.failed_tests.iter_mut().find(|t| t.name == name)
+                        {
                             test.failure_details = Some(details.join("\n"));
                         }
                     }
@@ -354,10 +363,13 @@ impl TestOutputParser for PytestParser {
                 if line.starts_with("=") && line.contains("=") {
                     in_failures_section = false;
                     if let Some((name, details)) = current_failure.take() {
-                        if let Some(test) = result.failed_tests.iter_mut().find(|t| t.name == name) {
+                        if let Some(test) = result.failed_tests.iter_mut().find(|t| t.name == name)
+                        {
                             test.failure_details = Some(details.join("\n"));
                             // Try to parse traceback for location
-                            if let Some((msg, loc)) = self.parse_traceback(&lines, i.saturating_sub(details.len())) {
+                            if let Some((msg, loc)) =
+                                self.parse_traceback(&lines, i.saturating_sub(details.len()))
+                            {
                                 test.location = Some(loc);
                                 if test.failure_details.is_none() {
                                     test.failure_details = Some(msg);
@@ -420,7 +432,8 @@ mod tests {
     #[test]
     fn test_parse_test_summary() {
         let parser = PytestParser::new();
-        let line = "===================== 5 passed, 2 failed, 1 skipped in 0.05s ======================";
+        let line =
+            "===================== 5 passed, 2 failed, 1 skipped in 0.05s ======================";
         let summary = parser.parse_test_summary(line).unwrap();
 
         assert_eq!(summary.total, 8);

@@ -1,8 +1,8 @@
 //! NPM Package Manager Command Conversion Tests
 //! Test that npm commands are correctly converted to pnpm/yarn format
 
-use analyzer::plugins::npm::NpmAnalyzer;
 use analyzer::core::BuildAnalyzer;
+use analyzer::plugins::npm::NpmAnalyzer;
 
 /// Helper to extract the program from a CommandBuilder
 /// We need to test the internal logic, so we'll test through the analyzer
@@ -10,7 +10,7 @@ use analyzer::core::BuildAnalyzer;
 fn test_pnpm_uses_pnpm_command() {
     // Create a pnpm analyzer
     let analyzer = NpmAnalyzer::pnpm();
-    
+
     // Verify the tech stack is correct
     let tech_stack = analyzer.tech_stack();
     assert_eq!(tech_stack.as_str(), "pnpm", "Tech stack should be pnpm");
@@ -20,7 +20,7 @@ fn test_pnpm_uses_pnpm_command() {
 fn test_yarn_uses_yarn_command() {
     // Create a yarn analyzer
     let analyzer = NpmAnalyzer::yarn();
-    
+
     // Verify the tech stack is correct
     let tech_stack = analyzer.tech_stack();
     assert_eq!(tech_stack.as_str(), "yarn", "Tech stack should be yarn");
@@ -30,13 +30,11 @@ fn test_yarn_uses_yarn_command() {
 fn test_npm_uses_npm_command() {
     // Create an npm analyzer
     let analyzer = NpmAnalyzer::npm();
-    
+
     // Verify the tech stack is correct
     let tech_stack = analyzer.tech_stack();
     assert_eq!(tech_stack.as_str(), "npm", "Tech stack should be npm");
 }
-
-
 
 /// Test that the convert_command logic works correctly
 /// This tests the internal conversion function indirectly
@@ -61,11 +59,14 @@ fn test_command_conversion_scenarios() {
         } else {
             input.to_string()
         };
-        
+
         assert!(
             converted.starts_with(expected),
             "For {}: '{}' should start with '{}' but got '{}'",
-            pm, input, expected, converted
+            pm,
+            input,
+            expected,
+            converted
         );
     }
 }
@@ -76,19 +77,19 @@ fn test_package_manager_as_str() {
     let npm_analyzer = NpmAnalyzer::npm();
     let pnpm_analyzer = NpmAnalyzer::pnpm();
     let yarn_analyzer = NpmAnalyzer::yarn();
-    
+
     assert_eq!(npm_analyzer.tech_stack().as_str(), "npm");
     assert_eq!(pnpm_analyzer.tech_stack().as_str(), "pnpm");
     assert_eq!(yarn_analyzer.tech_stack().as_str(), "yarn");
 }
 
-/// Test that pnpm analyzer with config uses converted commands
-///
-/// This test requires the Config system (Phase 2.2) - skipped until then.
+// /// Test that pnpm analyzer with config uses converted commands
+// ///
+// /// This test requires the Config system (Phase 2.2) - skipped until then.
 // #[test]
 // fn test_pnpm_analyzer_with_npm_config() {
 //     use analyzer::core::Config;
-//     
+//
 //     // Create a config with npm commands
 //     let config_str = r#"
 // version = "1.0"
@@ -97,12 +98,12 @@ fn test_package_manager_as_str() {
 // exec = "npm run lint -- --fix"
 // tech_stacks = ["npm", "pnpm", "yarn"]
 // "#;
-//     
+//
 //     let config: Config = toml::from_str(config_str).expect("Failed to parse config");
-//     
+//
 //     // Create pnpm analyzer with config
 //     let analyzer = NpmAnalyzer::pnpm().with_config(config);
-//     
+//
 //     // Build command options with free-form command
 //     let options = AnalyzeOptions {
 //         subcommand: Some(SubCommand::new("run lint")),
@@ -136,7 +137,7 @@ fn test_package_manager_as_str() {
 //         all_features: false,
 //         no_default_features: false,
 //     };
-//     
+//
 //     // Verify the analyzer was created correctly with pnpm tech stack
 //     assert_eq!(analyzer.tech_stack().as_str(), "pnpm", "Analyzer should be for pnpm");
 // }
@@ -159,8 +160,12 @@ fn test_yarn_command_conversion() {
         } else {
             input.to_string()
         };
-        
-        assert_eq!(converted, expected, "Command conversion failed for: {}", input);
+
+        assert_eq!(
+            converted, expected,
+            "Command conversion failed for: {}",
+            input
+        );
     }
 }
 
@@ -182,7 +187,11 @@ fn test_pnpm_command_conversion() {
         } else {
             input.to_string()
         };
-        
-        assert_eq!(converted, expected, "Command conversion failed for: {}", input);
+
+        assert_eq!(
+            converted, expected,
+            "Command conversion failed for: {}",
+            input
+        );
     }
 }

@@ -4,7 +4,9 @@
 use std::path::Path;
 
 mod common;
-use common::{fixtures_dir, is_command_available, run_command, save_raw_output, read_sample, generate_report};
+use common::{
+    fixtures_dir, generate_report, is_command_available, read_sample, run_command, save_raw_output,
+};
 
 fn gradle_project_path() -> std::path::PathBuf {
     fixtures_dir().join("gradle-project")
@@ -13,7 +15,10 @@ fn gradle_project_path() -> std::path::PathBuf {
 /// Check if Gradle is available
 fn ensure_gradle() -> Result<(), String> {
     if !is_command_available("gradle") && !is_command_available("gradlew") {
-        return Err("Gradle (gradle or gradlew) is not available in PATH. Please install Gradle.".to_string());
+        return Err(
+            "Gradle (gradle or gradlew) is not available in PATH. Please install Gradle."
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -21,7 +26,11 @@ fn ensure_gradle() -> Result<(), String> {
 /// Get the appropriate gradle command for the project
 fn get_gradle_cmd(project_path: &Path) -> String {
     // Check for gradlew in project directory
-    let gradlew_path = project_path.join(if cfg!(windows) { "gradlew.bat" } else { "gradlew" });
+    let gradlew_path = project_path.join(if cfg!(windows) {
+        "gradlew.bat"
+    } else {
+        "gradlew"
+    });
     if gradlew_path.exists() {
         return gradlew_path.to_string_lossy().to_string();
     }
@@ -32,8 +41,8 @@ fn get_gradle_cmd(project_path: &Path) -> String {
 
 #[test]
 fn test_gradle_compile_output() {
-    use analyzer::plugins::java::gradle::parser::GradleParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::java::gradle::parser::GradleParser;
 
     if let Err(e) = ensure_gradle() {
         println!("Skipping test: {}", e);
@@ -42,7 +51,11 @@ fn test_gradle_compile_output() {
 
     let project_path = gradle_project_path();
     let gradle_cmd = get_gradle_cmd(&project_path);
-    let cmd_name = if gradle_cmd.contains("gradlew") { "gradlew" } else { "gradle" };
+    let cmd_name = if gradle_cmd.contains("gradlew") {
+        "gradlew"
+    } else {
+        "gradle"
+    };
 
     // Run Gradle build
     let output = match run_command(cmd_name, &["compileJava", "--quiet"], &project_path) {
@@ -73,7 +86,7 @@ fn test_gradle_compile_output() {
         "Gradle Compile",
         "gradle compileJava",
         &issues,
-        Some("raw_output/gradle_compile.txt")
+        Some("raw_output/gradle_compile.txt"),
     );
 
     println!("=== Gradle Compile Output ===");
@@ -83,9 +96,9 @@ fn test_gradle_compile_output() {
     // Format: /path/to/File.java:10: error: message
     // Format: /path/to/File.java:20: warning: message
     let lines: Vec<&str> = output.lines().collect();
-    let has_error_lines = lines.iter().any(|line: &&str| {
-        line.contains(": error:") || line.contains(": warning:")
-    });
+    let has_error_lines = lines
+        .iter()
+        .any(|line: &&str| line.contains(": error:") || line.contains(": warning:"));
 
     if has_error_lines {
         println!("✓ Found Gradle error/warning lines in expected format");
@@ -106,8 +119,8 @@ fn test_gradle_compile_output() {
 
 #[test]
 fn test_gradle_test_output() {
-    use analyzer::plugins::java::gradle::parser::GradleParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::java::gradle::parser::GradleParser;
 
     if let Err(e) = ensure_gradle() {
         println!("Skipping test: {}", e);
@@ -116,7 +129,11 @@ fn test_gradle_test_output() {
 
     let project_path = gradle_project_path();
     let gradle_cmd = get_gradle_cmd(&project_path);
-    let cmd_name = if gradle_cmd.contains("gradlew") { "gradlew" } else { "gradle" };
+    let cmd_name = if gradle_cmd.contains("gradlew") {
+        "gradlew"
+    } else {
+        "gradle"
+    };
 
     // Running Gradle Tests
     let output = match run_command(cmd_name, &["test", "--quiet"], &project_path) {
@@ -144,7 +161,7 @@ fn test_gradle_test_output() {
         "Gradle Test",
         "gradle test",
         &issues,
-        Some("raw_output/gradle_test.txt")
+        Some("raw_output/gradle_test.txt"),
     );
 
     println!("=== Gradle Test Output ===");
@@ -182,15 +199,24 @@ fn test_validate_gradle_outputs() {
         "Gradle Compile (Sample)",
         "gradle compileJava (sample output)",
         &issues,
-        Some("samples/gradle_compile_sample.txt")
+        Some("samples/gradle_compile_sample.txt"),
     );
 
     println!("=== Validating Gradle Compile Sample ===");
     println!("Found {} issues in sample output", issues.len());
 
     let result = AnalysisResult::from_issues(issues);
-    println!("Total errors: {}", result.issues_by_level.get(&IssueLevel::Error).unwrap_or(&0));
-    println!("Total warnings: {}", result.issues_by_level.get(&IssueLevel::Warning).unwrap_or(&0));
+    println!(
+        "Total errors: {}",
+        result.issues_by_level.get(&IssueLevel::Error).unwrap_or(&0)
+    );
+    println!(
+        "Total warnings: {}",
+        result
+            .issues_by_level
+            .get(&IssueLevel::Warning)
+            .unwrap_or(&0)
+    );
 
     // Verify parsing results
     assert!(
@@ -202,10 +228,9 @@ fn test_validate_gradle_outputs() {
     for (file_path, file_issues) in &result.issues_by_file {
         println!("  File: {} - {} issues", file_path, file_issues.len());
         for issue in file_issues {
-            println!("    [{:?}] Line {:?}: {}",
-                issue.level,
-                issue.location.line_number,
-                issue.message
+            println!(
+                "    [{:?}] Line {:?}: {}",
+                issue.level, issue.location.line_number, issue.message
             );
         }
     }
@@ -219,7 +244,7 @@ fn test_validate_gradle_outputs() {
         "Gradle Test (Sample)",
         "gradle test (sample output)",
         &test_issues,
-        Some("samples/gradle_test_sample.txt")
+        Some("samples/gradle_test_sample.txt"),
     );
 
     println!("\n=== Validating Gradle Test Sample ===");
@@ -228,16 +253,25 @@ fn test_validate_gradle_outputs() {
 
 #[test]
 fn test_gradle_parser_specific_patterns() {
-    use analyzer::plugins::java::gradle::parser::GradleParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::java::gradle::parser::GradleParser;
 
     let parser = GradleParser::new();
 
     // Testing various Gradle error formats by parsing full output
     let test_cases = vec![
-        ("/src/main/java/App.java:10: error: cannot find symbol", "error"),
-        ("/src/main/java/App.java:20: warning: unchecked conversion", "warning"),
-        ("/src/test/java/Test.java:5: error: package org.junit does not exist", "error"),
+        (
+            "/src/main/java/App.java:10: error: cannot find symbol",
+            "error",
+        ),
+        (
+            "/src/main/java/App.java:20: warning: unchecked conversion",
+            "warning",
+        ),
+        (
+            "/src/test/java/Test.java:5: error: package org.junit does not exist",
+            "error",
+        ),
     ];
 
     println!("=== Testing Gradle Parser Patterns ===");
@@ -245,16 +279,27 @@ fn test_gradle_parser_specific_patterns() {
         let issues = parser.parse(line).data_or_default_owned();
         let found = !issues.is_empty();
         let status = if found { "✓" } else { "✗" };
-        println!("{} Line: '{}' - found issue: {} (level: {:?})",
-            status, line, found, issues.first().map(|i| &i.level));
+        println!(
+            "{} Line: '{}' - found issue: {} (level: {:?})",
+            status,
+            line,
+            found,
+            issues.first().map(|i| &i.level)
+        );
         assert!(found, "Should parse issue from line: {}", line);
-        
+
         if expected_level == "error" {
-            assert!(matches!(issues[0].level, analyzer::core::IssueLevel::Error),
-                "Should be error level: {}", line);
+            assert!(
+                matches!(issues[0].level, analyzer::core::IssueLevel::Error),
+                "Should be error level: {}",
+                line
+            );
         } else if expected_level == "warning" {
-            assert!(matches!(issues[0].level, analyzer::core::IssueLevel::Warning),
-                "Should be warning level: {}", line);
+            assert!(
+                matches!(issues[0].level, analyzer::core::IssueLevel::Warning),
+                "Should be warning level: {}",
+                line
+            );
         }
     }
 }

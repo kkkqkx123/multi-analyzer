@@ -1,0 +1,42 @@
+# Built-in filter for Turborepo TUI output.
+# Strips ANSI escape codes, TUI frame/border characters, cache/noise lines,
+# and summary statistics, keeping only the task output (lint errors, build logs).
+
+[filters.turbo]
+description = "Strip Turborepo TUI decoration, keep task results"
+match_command = "^(turbo|pnpm exec turbo|npx turbo)\\b"
+strip_ansi = true
+strip_tui_frames = true
+
+strip_lines_matching = [
+  "^\\s*cache (hit|miss|bypass)",
+  "cache (hit|miss|bypass|output)",
+  "^\\s*replaying logs",
+  "replaying logs",
+  "^\\s*\\d+ packages in scope",
+  "^\\s*Running \\w+ in \\d+ packages",
+  "^\\s*Remote caching",
+  "^\\s*Tasks:\\s*\\d+",
+  "^\\s*Cached:\\s*",
+  "^\\s*Time:\\s*",
+  "^\\s*Duration:\\s*",
+  "^\\s*Failed:\\s*",
+  "^\\s*ERROR\\s+run failed:",
+  "^\\s*\\d+ problems?\\s*\\(",
+  "^\\s*Update available",
+  "^\\s*Changelog:",
+  "^\\s*Follow @turborepo",
+  "^\\s*> .+@\\d+\\.\\d+\\.\\d+ \\w+",
+  "^\\s*\\S+@\\S+ \\w+ >",
+]
+
+replace = []
+
+short_circuit = [
+  { pattern = "(?i)BUILD SUCCESS", message = "Build succeeded", unless = "(?i)error|fail|warning" },
+  { pattern = "(?i)build succeeded", message = "Build succeeded", unless = "(?i)error|fail" }
+]
+
+max_lines = 100
+truncate_lines_at = 200
+on_empty = "turbo: all tasks completed successfully"

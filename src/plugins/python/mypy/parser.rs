@@ -16,10 +16,7 @@ impl MypyParser {
 
     fn parse_single_line(&self, line: &str) -> Option<Issue> {
         let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("Success")
-            || trimmed.starts_with("Found")
-        {
+        if trimmed.is_empty() || trimmed.starts_with("Success") || trimmed.starts_with("Found") {
             return None;
         }
 

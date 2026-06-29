@@ -1,419 +1,242 @@
-//! Processing pipeline for command output analysis
-//! Provides a stage-based pipeline abstraction for chaining analysis steps.
+//! Output processing pipeline for command output analysis.
 //!
-//! # Integration Status
-//! This module offers an optional processing pipeline that individual plugins
-//! can use instead of directly calling parsers + filters. It supports:
-//!   - Stage-based processing (Parse → Filter → Analyze)
-//!   - Degradation: `StageResult::Complete / Degraded / Failed`
-//!   - `ProcessingPipeline::run()` for a complete parse-filter-analyze flow
-//!
-//! TODO: Integrate into plugin `analyze()` methods via delegation. Currently
-//!       every plugin manually calls parser + filters + analyzer in sequence.
-//!       The pipeline can reduce boilerplate but requires:
-//!         1. Plugins to accept a `ProcessingPipeline` (or build one from config)
-//!         2. Consistent error/degradation handling across all plugins
-//!       This is deferred because the current per-plugin approach is simpler
-//!       and more explicit during active development.
+//! Provides:
+//!   - `OutputPostProcessor` (in utils.rs) — the single-source-of-truth 9-stage pipeline
+//!   - `LineFilter` trait + `PostProcessLineFilter` — line-by-line adapter for streaming
+//!   - `run_analyzer()` — unified entry point for all plugins, auto-selects processor
 
-#![allow(dead_code)]
+use std::sync::OnceLock;
 
+use crate::config::filter_compiler::compile_toml_filter;
+use crate::config::filter_registry::FilterRegistry;
+use crate::config::tee_writer;
+use crate::core::analyzer::AnalyzerError;
+use crate::core::command::CommandBuilder;
 use crate::core::parser::{OutputParser, ParseResult};
-use crate::core::types::{AnalysisResult, AnalyzeOptions, Issue};
+use crate::core::tracking::TimingGuard;
+use crate::core::types::{AnalysisResult, AnalyzeOptions};
 use crate::core::utils::OutputPostProcessor;
 
-/// Pipeline error with degradation support
+fn filter_registry() -> &'static FilterRegistry {
+    static REGISTRY: OnceLock<FilterRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(FilterRegistry::load)
+}
+
+/// Result of a pipeline stage.
 #[derive(Debug)]
-pub enum PipelineError {
-    StageFailed(String),
-    EmptyOutput,
-    IoError(std::io::Error),
-}
-
-impl std::fmt::Display for PipelineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PipelineError::StageFailed(msg) => write!(f, "Pipeline stage failed: {}", msg),
-            PipelineError::EmptyOutput => write!(f, "No output produced by pipeline"),
-            PipelineError::IoError(e) => write!(f, "I/O error in pipeline: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for PipelineError {}
-
-impl From<std::io::Error> for PipelineError {
-    fn from(e: std::io::Error) -> Self {
-        PipelineError::IoError(e)
-    }
-}
-
-/// Result of a pipeline stage
-#[derive(Debug)]
-pub enum StageResult<T> {
+enum StageResult<T> {
     Complete(T),
-    Degraded(T, Vec<String>),
     Failed(Vec<String>),
 }
 
-impl<T> StageResult<T> {
-    pub fn data(self) -> Option<T> {
-        match self {
-            StageResult::Complete(data) => Some(data),
-            StageResult::Degraded(data, _) => Some(data),
-            StageResult::Failed(_) => None,
-        }
-    }
-
-    pub fn warnings(&self) -> &[String] {
-        match self {
-            StageResult::Complete(_) => &[],
-            StageResult::Degraded(_, warnings) => warnings,
-            StageResult::Failed(warnings) => warnings,
-        }
-    }
-}
-
-/// A single stage in the processing pipeline
-pub trait PipelineStage<Input, Output>: Send {
-    /// Process input and produce output
-    fn process(&mut self, input: Input) -> StageResult<Output>;
-
-    /// Name of this stage for diagnostics
-    fn name(&self) -> &str;
-}
-
-/// Parsing stage: raw text -> issues
-pub struct ParseStage<P> {
-    parser: P,
-    warnings: Vec<String>,
-}
-
-impl<P> ParseStage<P> {
-    pub fn new(parser: P) -> Self {
-        Self {
-            parser,
-            warnings: Vec::new(),
-        }
-    }
-}
-
-impl<P: crate::core::parser::OutputParser> PipelineStage<String, Vec<Issue>> for ParseStage<P> {
-    fn process(&mut self, input: String) -> StageResult<Vec<Issue>> {
-        let result = self.parser.parse(&input);
-        match result {
-            ParseResult::Full(issues) => StageResult::Complete(issues),
-            ParseResult::Degraded(issues, warnings) => {
-                self.warnings.extend(warnings.clone());
-                StageResult::Degraded(issues, warnings)
-            }
-            ParseResult::Passthrough(raw) => {
-                let warning = format!("Parser fell back to passthrough ({} chars)", raw.len());
-                self.warnings.push(warning.clone());
-                StageResult::Failed(vec![warning])
-            }
-        }
-    }
-
-    fn name(&self) -> &str {
-        "parse"
-    }
-}
-
-/// Filtering stage: filter issues by criteria
-pub struct FilterStage;
-
-impl FilterStage {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Filter issues by file path patterns (keep only matching paths)
-    pub fn include_paths(paths: Vec<String>) -> IncludePathsFilter {
-        IncludePathsFilter { paths }
-    }
-
-    /// Suppress warning-level issues
-    pub fn errors_only() -> LevelFilter {
-        LevelFilter { errors_only: true }
-    }
-}
-
-/// Filter issues to only include those matching specified paths
-pub struct IncludePathsFilter {
-    paths: Vec<String>,
-}
-
-impl PipelineStage<Vec<Issue>, Vec<Issue>> for IncludePathsFilter {
-    fn process(&mut self, input: Vec<Issue>) -> StageResult<Vec<Issue>> {
-        if self.paths.is_empty() {
-            return StageResult::Complete(input);
-        }
-        let filtered: Vec<Issue> = input
-            .into_iter()
-            .filter(|issue| {
-                self.paths
-                    .iter()
-                    .any(|p| issue.location.file_path.contains(p))
-            })
-            .collect();
-        StageResult::Complete(filtered)
-    }
-
-    fn name(&self) -> &str {
-        "include_paths"
-    }
-}
-
-/// Filter issues by severity level
-pub struct LevelFilter {
-    errors_only: bool,
-}
-
-impl PipelineStage<Vec<Issue>, Vec<Issue>> for LevelFilter {
-    fn process(&mut self, input: Vec<Issue>) -> StageResult<Vec<Issue>> {
-        if !self.errors_only {
-            return StageResult::Complete(input);
-        }
-        let filtered: Vec<Issue> = input
-            .into_iter()
-            .filter(|issue| matches!(issue.level, crate::core::types::IssueLevel::Error))
-            .collect();
-        StageResult::Complete(filtered)
-    }
-
-    fn name(&self) -> &str {
-        "level_filter"
-    }
-}
-
-/// Analysis stage: issues -> AnalysisResult
-pub struct AnalyzeStage;
-
-impl PipelineStage<Vec<Issue>, AnalysisResult> for AnalyzeStage {
-    fn process(&mut self, input: Vec<Issue>) -> StageResult<AnalysisResult> {
-        let result = AnalysisResult::from_issues(input);
-        StageResult::Complete(result)
-    }
-
-    fn name(&self) -> &str {
-        "analyze"
-    }
-}
-
-/// Chained processing pipeline
-pub struct ProcessingPipeline {
-    warnings: Vec<String>,
-}
-
-impl ProcessingPipeline {
-    pub fn new() -> Self {
-        Self {
-            warnings: Vec::new(),
-        }
-    }
-
-    /// Run a complete analysis pipeline: parse -> filter -> analyze
-    pub fn run<P: crate::core::parser::OutputParser>(
-        &mut self,
-        parser: P,
-        output: &str,
-        filter_level: Option<crate::core::types::IssueLevel>,
-    ) -> StageResult<AnalysisResult> {
-        // Stage 1: Parse
-        let mut parse_stage = ParseStage::new(parser);
-        let issues = match parse_stage.process(output.to_string()) {
-            StageResult::Complete(issues) => issues,
-            StageResult::Degraded(issues, warnings) => {
-                self.warnings.extend(warnings);
-                issues
-            }
-            StageResult::Failed(warnings) => {
-                self.warnings.extend(warnings);
-                return StageResult::Failed(std::mem::take(&mut self.warnings));
-            }
-        };
-
-        // Stage 2: Filter
-        let filtered = if let Some(level) = filter_level {
-            match level {
-                crate::core::types::IssueLevel::Error => {
-                    let mut stage = LevelFilter { errors_only: true };
-                    stage.process(issues).data().unwrap_or_default()
-                }
-                _ => issues,
-            }
-        } else {
-            issues
-        };
-
-        // Stage 3: Analyze
-        let mut analyze_stage = AnalyzeStage;
-        match analyze_stage.process(filtered) {
-            StageResult::Complete(result) => {
-                if self.warnings.is_empty() {
-                    StageResult::Complete(result)
-                } else {
-                    StageResult::Degraded(result, std::mem::take(&mut self.warnings))
-                }
-            }
-            StageResult::Degraded(result, warnings) => {
-                self.warnings.extend(warnings);
-                StageResult::Degraded(result, std::mem::take(&mut self.warnings))
-            }
-            StageResult::Failed(warnings) => {
-                self.warnings.extend(warnings);
-                StageResult::Failed(std::mem::take(&mut self.warnings))
-            }
-        }
-    }
-
-    /// Collect all warnings accumulated during pipeline execution
-    pub fn warnings(&self) -> &[String] {
-        &self.warnings
-    }
-}
-
-/// Process output through a single stage
-pub fn process_stage<I, O>(
-    mut stage: impl PipelineStage<I, O>,
-    input: I,
-) -> StageResult<O> {
-    stage.process(input)
-}
-
-/// Simple line-based output stream filter
-pub struct LineFilter {
-    /// Lines to exclude (prefix match)
-    exclude_prefixes: Vec<String>,
-    /// Maximum number of lines to keep
-    max_lines: usize,
-    kept_lines: Vec<String>,
-}
-
-impl LineFilter {
-    pub fn new(max_lines: usize) -> Self {
-        Self {
-            exclude_prefixes: Vec::new(),
-            max_lines,
-            kept_lines: Vec::new(),
-        }
-    }
-
-    /// Add a prefix to exclude from output
-    pub fn exclude_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.exclude_prefixes.push(prefix.into());
-        self
-    }
-
-    pub fn into_output(self) -> String {
-        self.kept_lines.join("\n")
-    }
-}
-
-impl PipelineStage<String, String> for LineFilter {
-    fn process(&mut self, input: String) -> StageResult<String> {
-        self.kept_lines.clear();
-        for (i, line) in input.lines().enumerate() {
-            if i >= self.max_lines {
-                break;
-            }
-            let should_exclude = self
-                .exclude_prefixes
-                .iter()
-                .any(|p| line.starts_with(p));
-            if !should_exclude {
-                self.kept_lines.push(line.to_string());
-            }
-        }
-        StageResult::Complete(self.kept_lines.join("\n"))
-    }
-
-    fn name(&self) -> &str {
-        "line_filter"
-    }
-}
-
-/// Post-processing stage: apply ANSI stripping, noise filtering, line truncation.
-pub struct PostProcessStage {
-    processor: OutputPostProcessor,
-}
-
-impl PostProcessStage {
-    pub fn new(processor: OutputPostProcessor) -> Self {
-        Self { processor }
-    }
-
-    /// Create a default post-processor with sensible defaults for build output.
-    pub fn with_defaults() -> Self {
-        Self {
-            processor: OutputPostProcessor::new(),
-        }
-    }
-}
-
-impl PipelineStage<String, String> for PostProcessStage {
-    fn process(&mut self, input: String) -> StageResult<String> {
-        let result = self.processor.process(&input);
-        StageResult::Complete(result)
-    }
-
-    fn name(&self) -> &str {
-        "post_process"
-    }
-}
-
-/// Convenience function: run a complete analysis pipeline from raw output.
+/// Unified entry point for all plugins.
 ///
-/// This is an optional helper that wraps the common flow:
-///   `parser.parse() + AnalysisResult::from_issues() + result.filter_by_options()`
+/// Automatically resolves the post-processor by merging:
+/// 1. Base config from `AnalyzeOptions` (ANSI, TUI, noise/keep patterns, line limits)
+/// 2. TOML filter config from `FilterRegistry` (replace, short-circuit, on-empty, etc.)
 ///
-/// Any plugin's `analyze()` method can use this as a drop-in replacement for:
-/// ```ignore
-/// let issues = self.parser.parse(&output).data_or_default_owned();
-/// let result = AnalysisResult::from_issues(issues);
-/// Ok(self.filter_issues(result, options))
-/// ```
-///
-/// # Example
-/// ```ignore
-/// use crate::core::stream::run_analysis_pipeline;
-///
-/// fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-///     let output = self.create_command_builder(options).execute()?;
-///     match run_analysis_pipeline(&self.parser, &output, options) {
-///         StageResult::Complete(r) | StageResult::Degraded(r, _) => Ok(r),
-///         StageResult::Failed(warnings) => {
-///             Err(AnalyzerError::ParseError(warnings.join("; ")))
-///         }
-///     }
-/// }
-/// ```
-pub fn run_analysis_pipeline(
+/// Uses streaming mode (line-by-line filtering) for memory-efficient processing.
+pub fn run_analyzer(
+    builder: &CommandBuilder,
     parser: &dyn OutputParser,
-    output: &str,
+    options: &AnalyzeOptions,
+) -> Result<AnalysisResult, AnalyzerError> {
+    let command_str = builder.command_string();
+    let tech = command_str.split_whitespace().next().unwrap_or("unknown");
+
+    let mut guard = TimingGuard::start(tech, &command_str);
+
+    if options.report_format.is_raw() {
+        let result = builder.execute_streaming(FilterMode::Passthrough)?;
+        guard.set_output_bytes(0);
+        guard.complete(Some(result.exit_code), 0, true);
+        return Ok(AnalysisResult::new());
+    }
+
+    let processor = resolve_processor(builder, options);
+    let line_filter = PostProcessLineFilter::new(processor);
+    let result = builder.execute_streaming(FilterMode::Streaming(Box::new(line_filter)))?;
+
+    let exit_code = result.exit_code;
+    let total_output = result.filtered.len()
+        + result.raw_stdout.as_ref().map_or(0, |s| s.len())
+        + result.raw_stderr.as_ref().map_or(0, |s| s.len());
+    guard.set_output_bytes(total_output);
+
+    let raw_for_tee = match (&result.raw_stdout, &result.raw_stderr) {
+        (Some(out), Some(err)) => format!("{}\n{}", out, err),
+        (Some(out), None) => out.clone(),
+        (None, Some(err)) => err.clone(),
+        (None, None) => String::new(),
+    };
+    if !raw_for_tee.is_empty() {
+        tee_writer::tee_raw(&raw_for_tee, &command_str, exit_code);
+    }
+
+    match parse_and_analyze(parser, &result.filtered, options) {
+        StageResult::Complete(r) => {
+            guard.complete(Some(exit_code), r.total_issues, true);
+            Ok(r)
+        }
+        StageResult::Failed(w) => {
+            let issue_count = 0;
+            guard.complete(Some(exit_code), issue_count, false);
+            Err(AnalyzerError::ParseError(w.join("; ")))
+        }
+    }
+}
+
+/// Resolve the OutputPostProcessor by merging AnalyzeOptions with TOML filter configs.
+fn resolve_processor(builder: &CommandBuilder, options: &AnalyzeOptions) -> OutputPostProcessor {
+    let base = OutputPostProcessor::from_options(options);
+    let command_str = builder.command_string();
+
+    let registry = filter_registry();
+    if let Some(toml_config) = registry.find_filter(&command_str) {
+        let toml_processor = compile_toml_filter(toml_config);
+        return OutputPostProcessor::merge(base, toml_processor);
+    }
+
+    base
+}
+
+/// Line-by-line filter for streaming output processing.
+/// Implementations process individual lines and decide whether to
+/// emit them (Some) or drop them (None).
+pub trait LineFilter: Send {
+    /// Process a single output line.
+    /// Return `Some(filtered_line)` to keep, `None` to drop.
+    fn feed_line(&mut self, line: &str) -> Option<String>;
+
+    /// Called after all lines have been fed.
+    /// Returns remaining lines to append (e.g., on-empty message, short-circuit result).
+    fn on_complete(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+/// Mode for processing command output.
+pub enum FilterMode<'a> {
+    /// Apply a line-by-line filter during command execution (memory efficient).
+    Streaming(Box<dyn LineFilter + 'a>),
+    /// No filtering, passthrough stdin/stdout/stderr directly.
+    Passthrough,
+}
+
+/// Result of streaming command execution.
+#[derive(Debug)]
+pub struct StreamResult {
+    /// Process exit code
+    pub exit_code: i32,
+    /// Raw stdout captured during streaming (only when verbose)
+    pub raw_stdout: Option<String>,
+    /// Raw stderr captured during streaming (only when verbose)
+    pub raw_stderr: Option<String>,
+    /// Filtered output (result of applying LineFilter to both stdout and stderr)
+    pub filtered: String,
+}
+
+/// Post-processing adapter that wraps OutputPostProcessor as a LineFilter.
+///
+/// Delegates each stage to OutputPostProcessor's per-line methods,
+/// accumulating text for batch-only stages (short-circuit, on-empty)
+/// that are evaluated in `on_complete()`.
+pub struct PostProcessLineFilter {
+    processor: OutputPostProcessor,
+    line_count: usize,
+    accumulated: String,
+    capped: bool,
+}
+
+impl PostProcessLineFilter {
+    /// Build a streaming filter that owns the given OutputPostProcessor.
+    pub fn new(processor: OutputPostProcessor) -> Self {
+        Self {
+            processor,
+            line_count: 0,
+            accumulated: String::new(),
+            capped: false,
+        }
+    }
+}
+
+impl LineFilter for PostProcessLineFilter {
+    fn feed_line(&mut self, line: &str) -> Option<String> {
+        if self.capped {
+            return None;
+        }
+
+        // Stage 1: ANSI stripping (per-line)
+        let mut result = self.processor.process_line_ansi(line);
+
+        // Stage 2: Regex replace (per-line)
+        result = self.processor.process_line_replace(&result);
+
+        // Stage 4: TUI frame/border detection (per-line)
+        result = self.processor.process_line_tui(&result)?;
+
+        // Stage 5: Noise filtering (per-line)
+        if self.processor.is_noise_line(&result) {
+            return None;
+        }
+
+        // Stage 6: Keep filtering (per-line)
+        if !self.processor.is_keep_line(&result) {
+            return None;
+        }
+
+        // Stage 7: Per-line length truncation (per-line)
+        result = self.processor.process_line_truncate(&result);
+
+        // Stage 8: Max lines check
+        if let Some(max_lines) = self.processor.max_lines {
+            if self.line_count >= max_lines {
+                self.capped = true;
+                return None;
+            }
+        }
+
+        self.line_count += 1;
+        if !self.accumulated.is_empty() {
+            self.accumulated.push('\n');
+        }
+        self.accumulated.push_str(&result);
+        Some(result)
+    }
+
+    fn on_complete(&mut self) -> Vec<String> {
+        // Stage 3: Short-circuit (batch — needs full accumulated output)
+        if let Some(msg) = self.processor.check_short_circuit(&self.accumulated) {
+            return vec![msg];
+        }
+
+        // Stage 9: On-empty fallback
+        if self.line_count == 0 {
+            if let Some(ref msg) = self.processor.on_empty_message {
+                return vec![msg.clone()];
+            }
+        }
+        Vec::new()
+    }
+}
+
+/// Run parse + analyze on already-preprocessed output.
+/// Used internally by run_analyzer after streaming execution.
+fn parse_and_analyze(
+    parser: &dyn OutputParser,
+    processed_output: &str,
     options: &AnalyzeOptions,
 ) -> StageResult<AnalysisResult> {
-    let processor = crate::core::utils::OutputPostProcessor {
-        strip_ansi: options.strip_ansi,
-        strip_tui_frames: options.strip_tui_frames,
-        max_lines: if options.max_output_lines > 0 { Some(options.max_output_lines) } else { None },
-        max_line_length: if options.max_line_length > 0 { Some(options.max_line_length) } else { None },
-        noise_patterns: options.noise_patterns.clone(),
-        keep_patterns: options.keep_patterns.clone(),
-    };
-    let processed_output = processor.process(output);
-    let result = parser.parse(&processed_output);
+    let result = parser.parse(processed_output);
     match result {
         ParseResult::Full(issues) | ParseResult::Degraded(issues, _) => {
             let result = AnalysisResult::from_issues(issues);
             StageResult::Complete(result.filter_by_options(options))
         }
-        ParseResult::Passthrough(raw) => {
-            StageResult::Failed(vec![
-                format!("Parser fell back to passthrough ({} chars)", raw.len())
-            ])
-        }
+        ParseResult::Passthrough(raw) => StageResult::Failed(vec![format!(
+            "Parser fell back to passthrough ({} chars)",
+            raw.len()
+        )]),
     }
 }
 
@@ -425,72 +248,95 @@ mod tests {
     struct MockParser;
 
     impl OutputParser for MockParser {
-        fn parse(&self, _output: &str) -> ParseResult<Vec<Issue>> {
-            ParseResult::Full(vec![
-                Issue::new(IssueLevel::Error, "test error", Location::new("src/main.rs")),
-            ])
+        fn parse(&self, _output: &str) -> ParseResult<Vec<crate::core::types::Issue>> {
+            ParseResult::Full(vec![crate::core::types::Issue::new(
+                IssueLevel::Error,
+                "test error",
+                Location::new("src/main.rs"),
+            )])
         }
     }
 
     #[test]
-    fn test_parse_stage_complete() {
-        let mut stage = ParseStage::new(MockParser);
-        let result = stage.process("some output".to_string());
-        let data = result.data();
-        assert!(data.is_some());
-        assert_eq!(data.unwrap().len(), 1);
-    }
-
-    #[test]
-    fn test_analyze_stage() {
-        let mut stage = AnalyzeStage;
-        let issues = vec![
-            Issue::new(IssueLevel::Error, "error 1", Location::new("a.rs")),
-            Issue::new(IssueLevel::Warning, "warning 1", Location::new("b.rs")),
-        ];
-        let result = stage.process(issues);
-        let data = result.data().unwrap();
-        assert_eq!(data.total_issues, 2);
-    }
-
-    #[test]
-    fn test_full_pipeline() {
-        let mut pipeline = ProcessingPipeline::new();
-        let result = pipeline.run(MockParser, "test output", None);
-        match result {
-            StageResult::Complete(analysis) => {
-                assert_eq!(analysis.total_issues, 1);
-                assert_eq!(analysis.error_count(), 1);
-            }
-            _ => panic!("Expected complete result"),
-        }
-    }
-
-    #[test]
-    fn test_line_filter() {
-        let mut filter = LineFilter::new(10).exclude_prefix("DEBUG");
-        let result = filter.process("INFO: ok\nDEBUG: skip\nWARN: maybe".to_string());
-        let output = result.data().unwrap();
-        assert!(!output.contains("DEBUG"));
-        assert!(output.contains("INFO"));
-        assert!(output.contains("WARN"));
-    }
-
-    #[test]
-    fn test_stage_result_degraded() {
-        let degraded: StageResult<Vec<i32>> = StageResult::Degraded(vec![1, 2], vec!["partial".to_string()]);
-        let data = degraded.data();
-        assert_eq!(data, Some(vec![1, 2]));
-    }
-
-    #[test]
-    fn test_post_process_stage() {
+    fn test_post_process_line_filter_basic() {
         let processor = OutputPostProcessor::new()
+            .with_strip_ansi(true)
             .with_noise_patterns(vec!["^debug:".to_string()]);
-        let mut stage = PostProcessStage::new(processor);
-        let result = stage.process("debug: verbose\nerror: failed".to_string());
-        let output = result.data().unwrap();
-        assert!(!output.contains("debug:"));
-        assert!(output.contains("error:"));
+        let mut filter = PostProcessLineFilter::new(processor);
+
+        assert!(filter.feed_line("debug: skip").is_none());
+        assert_eq!(
+            filter.feed_line("error: fail"),
+            Some("error: fail".to_string())
+        );
+
+        let tail = filter.on_complete();
+        assert!(tail.is_empty());
+    }
+
+    #[test]
+    fn test_post_process_line_filter_ansi_strip() {
+        let processor = OutputPostProcessor::new().with_strip_ansi(true);
+        let mut filter = PostProcessLineFilter::new(processor);
+        let result = filter.feed_line("\x1b[31merror\x1b[0m: something");
+        assert_eq!(result, Some("error: something".to_string()));
+    }
+
+    #[test]
+    fn test_post_process_line_filter_tui_border() {
+        let processor = OutputPostProcessor::new().with_strip_tui_frames(true);
+        let mut filter = PostProcessLineFilter::new(processor);
+        assert!(filter
+            .feed_line("\u{250c}\u{2500}\u{2500}\u{2500}\u{2510}")
+            .is_none());
+        let result = filter.feed_line("\u{2502} ./main.go:10:5: error");
+        assert_eq!(result, Some("./main.go:10:5: error".to_string()));
+    }
+
+    #[test]
+    fn test_post_process_line_filter_keep_only() {
+        let processor =
+            OutputPostProcessor::new().with_keep_patterns(vec!["error|warning".to_string()]);
+        let mut filter = PostProcessLineFilter::new(processor);
+        assert!(filter.feed_line("cache hit").is_none());
+        assert_eq!(
+            filter.feed_line("error: failed"),
+            Some("error: failed".to_string())
+        );
+    }
+
+    #[test]
+    fn test_post_process_line_filter_max_lines() {
+        let processor = OutputPostProcessor::new().with_max_lines(2);
+        let mut filter = PostProcessLineFilter::new(processor);
+        assert!(filter.feed_line("line1").is_some());
+        assert!(filter.feed_line("line2").is_some());
+        assert!(filter.feed_line("line3").is_none());
+    }
+
+    #[test]
+    fn test_post_process_line_filter_on_empty() {
+        let processor = OutputPostProcessor::new()
+            .with_keep_patterns(vec!["$^".to_string()])
+            .with_on_empty("all good");
+        let mut filter = PostProcessLineFilter::new(processor);
+        assert!(filter.feed_line("should be dropped").is_none());
+        let tail = filter.on_complete();
+        assert_eq!(tail, vec!["all good"]);
+    }
+
+    #[test]
+    fn test_post_process_line_filter_short_circuit() {
+        let processor = OutputPostProcessor::new().with_short_circuits(vec![
+            crate::core::utils::ShortCircuitRule {
+                pattern: "SUCCESS".to_string(),
+                message: "Build OK".to_string(),
+                unless: None,
+            },
+        ]);
+        let mut filter = PostProcessLineFilter::new(processor);
+        filter.feed_line("BUILD SUCCESS");
+        let tail = filter.on_complete();
+        assert_eq!(tail, vec!["Build OK"]);
     }
 }

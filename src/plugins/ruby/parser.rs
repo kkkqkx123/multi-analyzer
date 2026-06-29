@@ -2,12 +2,11 @@
 //! Parsing output from RuboCop, RSpec, Rake, Minitest, and general Ruby commands
 
 use crate::core::{
-    BaseParser, Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput,
-    TestCase, TestOutputParser, TestStatus, TestSummary,
+    BaseParser, Issue, IssueLevel, Location, OutputParser, ParseResult, ParsedTestOutput, TestCase,
+    TestOutputParser, TestStatus, TestSummary,
 };
 
 pub struct RubyParser {
-    #[allow(dead_code)]
     base: BaseParser,
 }
 
@@ -36,7 +35,10 @@ impl RubyParser {
         }
 
         // RSpec default output
-        if output.contains("example") && output.contains("failure") && output.contains("Finished in") {
+        if output.contains("example")
+            && output.contains("failure")
+            && output.contains("Finished in")
+        {
             return RubyOutputType::RspecDefault;
         }
 
@@ -63,30 +65,46 @@ impl RubyParser {
         //   "cop_name": "...", "location": { "line": N, "column": N, "length": N } }] }] }
         if let Some(files) = parsed.get("files").and_then(|v| v.as_array()) {
             for file_entry in files {
-                let file_path = file_entry.get("path").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let file_path = file_entry
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
 
                 if let Some(offenses) = file_entry.get("offenses").and_then(|v| v.as_array()) {
                     for offense in offenses {
-                        let severity = offense.get("severity").and_then(|v| v.as_str()).unwrap_or("convention");
-                        let message = offense.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                        let cop_name = offense.get("cop_name").and_then(|v| v.as_str()).unwrap_or("");
+                        let severity = offense
+                            .get("severity")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("convention");
+                        let message = offense
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let cop_name = offense
+                            .get("cop_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
 
                         let location_data = offense.get("location");
-                        let (line_num, col_num) = location_data.map(|loc| {
-                            let line = loc.get("line").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                            let col = loc.get("column").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                            (line, col)
-                        }).unwrap_or((0, 0));
+                        let (line_num, col_num) = location_data
+                            .map(|loc| {
+                                let line =
+                                    loc.get("line").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                                let col =
+                                    loc.get("column").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                                (line, col)
+                            })
+                            .unwrap_or((0, 0));
 
-                        let level = match severity {
-                            "fatal" | "error" => IssueLevel::Error,
-                            "warning" => IssueLevel::Warning,
-                            "convention" | "refactor" | "info" => IssueLevel::Warning,
-                            _ => IssueLevel::Warning,
-                        };
+                        let level = self
+                            .base
+                            .detect_level(severity)
+                            .unwrap_or(IssueLevel::Warning);
 
                         let location = if line_num > 0 && col_num > 0 {
-                            Location::new(file_path.to_string()).with_line(line_num).with_column(col_num)
+                            Location::new(file_path.to_string())
+                                .with_line(line_num)
+                                .with_column(col_num)
                         } else if line_num > 0 {
                             Location::new(file_path.to_string()).with_line(line_num)
                         } else {
@@ -122,18 +140,36 @@ impl RubyParser {
         //   "exception": { "class": "...", "message": "...", "backtrace": [...] } }] }
         if let Some(examples) = parsed.get("examples").and_then(|v| v.as_array()) {
             for example in examples {
-                let status = example.get("status").and_then(|v| v.as_str()).unwrap_or("passed");
-                let description = example.get("full_description").and_then(|v| v.as_str()).unwrap_or("");
-                let file_path = example.get("file_path").and_then(|v| v.as_str()).unwrap_or("unknown");
-                let line_number = example.get("line_number").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let status = example
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("passed");
+                let description = example
+                    .get("full_description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let file_path = example
+                    .get("file_path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let line_number = example
+                    .get("line_number")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
 
                 if status == "failed" {
                     let mut message = description.to_string();
                     let mut context = String::new();
 
                     if let Some(exception) = example.get("exception") {
-                        let exc_message = exception.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                        let exc_class = exception.get("class").and_then(|v| v.as_str()).unwrap_or("Error");
+                        let exc_message = exception
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let exc_class = exception
+                            .get("class")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Error");
 
                         message = format!("{}: {}", exc_class, exc_message);
                         context = description.to_string();
@@ -158,22 +194,23 @@ impl RubyParser {
     }
 
     /// Parse RSpec default text output
-    #[allow(dead_code)]
     fn parse_rspec_default(&self, output: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
+        let re = regex::Regex::new(r"^\s*#\s\./(.+?):(\d+)").ok();
 
         for line in output.lines() {
-            // Match: "  # ./spec/file_spec.rb:123"
-            let re = regex::Regex::new(r"^\s*#\s\./(.+?):(\d+)").ok();
-            if let Some(re) = re {
+            if let Some(re) = &re {
                 if let Some(caps) = re.captures(line) {
                     let file_path = caps.get(1).map(|m| m.as_str()).unwrap_or("unknown");
-                    let line_num: u32 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+                    let line_num: u32 = caps
+                        .get(2)
+                        .and_then(|m| m.as_str().parse().ok())
+                        .unwrap_or(0);
 
                     // Check if the previous line indicates a failure
                     issues.push(Issue::new(
                         IssueLevel::Error,
-                        format!("RSpec failure reference"),
+                        "RSpec failure reference".to_string(),
                         Location::new(file_path.to_string()).with_line(line_num),
                     ));
                 }
@@ -188,9 +225,7 @@ impl RubyParser {
     ///     N: from file.rb:line:in `method'
     ///   file.rb:line:in `method': message (ErrorClass)
     fn parse_ruby_error(&self, line: &str) -> Option<Issue> {
-        let re = regex::Regex::new(
-            r"^(.+?):(\d+):in\s+`[^']*':\s*(.+?)\s*\((.+?)\)"
-        ).ok()?;
+        let re = regex::Regex::new(r"^(.+?):(\d+):in\s+`[^']*':\s*(.+?)\s*\((.+?)\)").ok()?;
 
         if let Some(caps) = re.captures(line.trim()) {
             let file_path = caps.get(1)?.as_str();
@@ -216,6 +251,7 @@ impl RubyParser {
 
         let lines: Vec<&str> = output.lines().collect();
         let mut i = 0;
+        let failure_re = regex::Regex::new(r"^rspec\s+\./(.+?):(\d+)$").ok();
 
         while i < lines.len() {
             let line = lines[i];
@@ -224,15 +260,30 @@ impl RubyParser {
             if i == 0 && (line.trim().starts_with('{') || output.contains("\"examples\":")) {
                 let parsed: serde_json::Value = match serde_json::from_str(output) {
                     Ok(v) => v,
-                    Err(_) => { i += 1; continue; }
+                    Err(_) => {
+                        i += 1;
+                        continue;
+                    }
                 };
 
                 if let Some(examples) = parsed.get("examples").and_then(|v| v.as_array()) {
                     for example in examples {
-                        let status = example.get("status").and_then(|v| v.as_str()).unwrap_or("passed");
-                        let description = example.get("full_description").and_then(|v| v.as_str()).unwrap_or("unknown");
-                        let file_path = example.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
-                        let line_number = example.get("line_number").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                        let status = example
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("passed");
+                        let description = example
+                            .get("full_description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let file_path = example
+                            .get("file_path")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let line_number = example
+                            .get("line_number")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as u32;
 
                         let location = if line_number > 0 && !file_path.is_empty() {
                             Some(Location::new(file_path.to_string()).with_line(line_number))
@@ -250,14 +301,17 @@ impl RubyParser {
                             },
                             location,
                             failure_details: if status == "failed" {
-                                example.get("exception").and_then(|e| {
-                                    let msg = e.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                                    let backtrace = e.get("backtrace").and_then(|v| v.as_array())
-                                        .map(|arr| arr.iter()
-                                            .filter_map(|v| v.as_str())
-                                            .collect::<Vec<_>>()
-                                            .join("\n"));
-                                    Some(format!("{}\n{}", msg, backtrace.unwrap_or_default()))
+                                example.get("exception").map(|e| {
+                                    let msg =
+                                        e.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                                    let backtrace =
+                                        e.get("backtrace").and_then(|v| v.as_array()).map(|arr| {
+                                            arr.iter()
+                                                .filter_map(|v| v.as_str())
+                                                .collect::<Vec<_>>()
+                                                .join("\n")
+                                        });
+                                    format!("{}\n{}", msg, backtrace.unwrap_or_default())
                                 })
                             } else {
                                 None
@@ -275,12 +329,30 @@ impl RubyParser {
 
                 // Parse summary from JSON
                 if let Some(summary) = parsed.get("summary") {
-                    let passed = summary.get("example_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize
-                        - summary.get("failure_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize
-                        - summary.get("pending_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                    let failed = summary.get("failure_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                    let pending = summary.get("pending_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                    let total = summary.get("example_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                    let passed = summary
+                        .get("example_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize
+                        - summary
+                            .get("failure_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as usize
+                        - summary
+                            .get("pending_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as usize;
+                    let failed = summary
+                        .get("failure_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize;
+                    let pending = summary
+                        .get("pending_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize;
+                    let total = summary
+                        .get("example_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize;
 
                     result.test_summary = Some(TestSummary {
                         total,
@@ -303,12 +375,16 @@ impl RubyParser {
             }
 
             // Match failure reference: "rspec ./spec/file_spec.rb:123"
-            let failure_re = regex::Regex::new(r"^rspec\s+\./(.+?):(\d+)$").ok();
             if let Some(re) = &failure_re {
                 if let Some(caps) = re.captures(line.trim()) {
                     let name = format!("rspec {}", caps.get(1).map(|m| m.as_str()).unwrap_or(""));
-                    let location = Location::new(caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string())
-                        .with_line(caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0));
+                    let location =
+                        Location::new(caps.get(1).map(|m| m.as_str()).unwrap_or("").to_string())
+                            .with_line(
+                                caps.get(2)
+                                    .and_then(|m| m.as_str().parse().ok())
+                                    .unwrap_or(0),
+                            );
 
                     result.failed_tests.push(TestCase {
                         name,
@@ -345,15 +421,18 @@ impl RubyParser {
 
     /// Parse RSpec text summary: "N examples, M failures, P pending"
     fn parse_rspec_text_summary(&self, line: &str) -> Option<TestSummary> {
-        let re = regex::Regex::new(
-            r"^(\d+)\s+examples?,\s+(\d+)\s+failures?(?:,\s+(\d+)\s+pending)?"
-        ).ok()?;
+        let re =
+            regex::Regex::new(r"^(\d+)\s+examples?,\s+(\d+)\s+failures?(?:,\s+(\d+)\s+pending)?")
+                .ok()?;
 
         let caps = re.captures(line.trim())?;
 
         let total: usize = caps.get(1)?.as_str().parse().ok()?;
         let failed: usize = caps.get(2)?.as_str().parse().ok()?;
-        let pending: usize = caps.get(3).map(|m| m.as_str().parse().unwrap_or(0)).unwrap_or(0);
+        let pending: usize = caps
+            .get(3)
+            .map(|m| m.as_str().parse().unwrap_or(0))
+            .unwrap_or(0);
         let passed = total.saturating_sub(failed).saturating_sub(pending);
 
         Some(TestSummary {
@@ -390,7 +469,13 @@ impl OutputParser for RubyParser {
 
         let issues = match output_type {
             RubyOutputType::RubocopJson => self.parse_rubocop_json(output),
-            RubyOutputType::RspecJson | RubyOutputType::RspecDefault => self.parse_rspec_json(output),
+            RubyOutputType::RspecJson => self.parse_rspec_json(output),
+            RubyOutputType::RspecDefault => {
+                let mut issues = self.parse_rspec_json(output);
+                let default_issues = self.parse_rspec_default(output);
+                issues.extend(default_issues);
+                issues
+            }
             RubyOutputType::RuntimeError | RubyOutputType::Unknown => {
                 // Fallback: line-by-line parsing
                 let mut issues = Vec::new();
@@ -442,7 +527,10 @@ mod tests {
         assert_eq!(issues[0].location.file_path, "src/app.rb");
         assert_eq!(issues[0].location.line_number, Some(15));
         assert_eq!(issues[0].location.column_number, Some(5));
-        assert_eq!(issues[0].code, Some("RuboCop/Lint/UnusedMethodArgument".to_string()));
+        assert_eq!(
+            issues[0].code,
+            Some("RuboCop/Lint/UnusedMethodArgument".to_string())
+        );
         assert!(matches!(issues[0].level, IssueLevel::Warning));
     }
 
@@ -504,7 +592,10 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].location.file_path, "./spec/calculator_spec.rb");
         assert_eq!(issues[0].location.line_number, Some(5));
-        assert_eq!(issues[0].message, "RSpec::Expectations::ExpectationNotMetError: expected: 5, got: 4");
+        assert_eq!(
+            issues[0].message,
+            "RSpec::Expectations::ExpectationNotMetError: expected: 5, got: 4"
+        );
         assert!(matches!(issues[0].level, IssueLevel::Error));
     }
 
@@ -596,7 +687,10 @@ mod tests {
     fn test_detect_rubocop_json() {
         let parser = RubyParser::new();
         let output = "{\"metadata\": {\"rubocop_version\": \"1.50.0\"}}";
-        assert_eq!(parser.detect_output_type(output), RubyOutputType::RubocopJson);
+        assert_eq!(
+            parser.detect_output_type(output),
+            RubyOutputType::RubocopJson
+        );
     }
 
     #[test]

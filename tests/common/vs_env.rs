@@ -29,16 +29,20 @@ pub fn run_with_vs_env(cmd: &str, args: &[&str], cwd: &PathBuf) -> Result<String
 
     // Build the command string (with proper quoting)
     let cmd_str = args.iter().fold(cmd.to_string(), |acc, arg| {
-        format!("{} {}", acc, if arg.contains(' ') { format!("\"{}\"", arg) } else { arg.to_string() })
+        format!(
+            "{} {}",
+            acc,
+            if arg.contains(' ') {
+                format!("\"{}\"", arg)
+            } else {
+                arg.to_string()
+            }
+        )
     });
 
     // Execute via cmd.exe with vcvarsall.bat to set VS environment variables
     // vcvarsall.bat sets environment in the cmd session, then runs the command
-    let cmd_script = format!(
-        "\"{}\" x64 && {}",
-        VS_VARSALL_PATH,
-        cmd_str
-    );
+    let cmd_script = format!("\"{}\" x64 && {}", VS_VARSALL_PATH, cmd_str);
 
     println!("Executing in VS environment: {}", cmd_str);
 
@@ -90,8 +94,13 @@ pub fn check_msvc() -> bool {
             // Quick test to see if cl is available after activating VS shell via vcvarsall.bat
             let test_output = Command::new("cmd.exe")
                 .args([
-                    "/D", "/S", "/C",
-                    &format!("\"{}\" x64 >nul 2>&1 && where cl >nul 2>&1", VS_VARSALL_PATH)
+                    "/D",
+                    "/S",
+                    "/C",
+                    &format!(
+                        "\"{}\" x64 >nul 2>&1 && where cl >nul 2>&1",
+                        VS_VARSALL_PATH
+                    ),
                 ])
                 .output();
 

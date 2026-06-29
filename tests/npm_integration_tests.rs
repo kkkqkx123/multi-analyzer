@@ -4,7 +4,10 @@
 use std::path::PathBuf;
 
 mod common;
-use common::{fixtures_dir, is_command_available, raw_output_dir, resolve_command, run_command, save_raw_output, generate_report};
+use common::{
+    fixtures_dir, generate_report, is_command_available, raw_output_dir, resolve_command,
+    run_command, save_raw_output,
+};
 
 fn npm_project_path() -> PathBuf {
     fixtures_dir().join("npm-project")
@@ -35,8 +38,8 @@ fn ensure_npm_deps() -> Result<(), String> {
 
 #[test]
 fn test_npm_eslint_output() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::npm::parser::NpmParser;
 
     if let Err(e) = ensure_npm_deps() {
         println!("Skipping test: {}", e);
@@ -58,7 +61,10 @@ fn test_npm_eslint_output() {
             match run_command("npm", &["run", "lint"], &project_path) {
                 Ok(output) => output,
                 Err(e2) => {
-                    panic!("Both npx eslint and npm run lint failed. npx error: {}, npm error: {}", e, e2);
+                    panic!(
+                        "Both npx eslint and npm run lint failed. npx error: {}, npm error: {}",
+                        e, e2
+                    );
                 }
             }
         }
@@ -75,7 +81,7 @@ fn test_npm_eslint_output() {
         "ESLint",
         "npx eslint src/**/*.ts --format compact",
         &issues,
-        Some("raw_output/npm_eslint.txt")
+        Some("raw_output/npm_eslint.txt"),
     );
 
     println!("=== NPM ESLint Output ===");
@@ -84,9 +90,9 @@ fn test_npm_eslint_output() {
     // Verify output contains ESLint format issues
     // ESLint compact format: filepath:line:col: level message
     let lines: Vec<&str> = output.lines().collect();
-    let has_issue_lines = lines.iter().any(|line| {
-        line.contains(":") && (line.contains("error") || line.contains("warning"))
-    });
+    let has_issue_lines = lines
+        .iter()
+        .any(|line| line.contains(":") && (line.contains("error") || line.contains("warning")));
 
     if has_issue_lines {
         println!("✓ Found ESLint issue lines in expected format");
@@ -99,8 +105,8 @@ fn test_npm_eslint_output() {
 
 #[test]
 fn test_npm_typecheck_output() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::npm::parser::NpmParser;
 
     if let Err(e) = ensure_npm_deps() {
         println!("Skipping test: {}", e);
@@ -117,7 +123,10 @@ fn test_npm_typecheck_output() {
             match run_command("npm", &["run", "type-check"], &project_path) {
                 Ok(output) => output,
                 Err(e2) => {
-                    panic!("Both npx tsc and npm run type-check failed. npx error: {}, npm error: {}", e, e2);
+                    panic!(
+                        "Both npx tsc and npm run type-check failed. npx error: {}, npm error: {}",
+                        e, e2
+                    );
                 }
             }
         }
@@ -134,7 +143,7 @@ fn test_npm_typecheck_output() {
         "TypeScript Type Check",
         "npx tsc --noEmit",
         &issues,
-        Some("raw_output/npm_typecheck.txt")
+        Some("raw_output/npm_typecheck.txt"),
     );
 
     println!("=== NPM TypeScript Type-Check Output ===");
@@ -156,8 +165,8 @@ fn test_npm_typecheck_output() {
 
 #[test]
 fn test_npm_audit_output() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
+    use analyzer::plugins::npm::parser::NpmParser;
 
     if !is_command_available("npm") {
         println!("Skipping test: npm is not available");
@@ -184,7 +193,7 @@ fn test_npm_audit_output() {
         "NPM Audit",
         "npm audit",
         &issues,
-        Some("raw_output/npm_audit.txt")
+        Some("raw_output/npm_audit.txt"),
     );
 
     println!("=== NPM Audit Output ===");
@@ -211,7 +220,10 @@ fn test_npm_ls_output() {
     let output = match run_command("npm", &["ls", "--depth=0"], &project_path) {
         Ok(output) => output,
         Err(e) => {
-            println!("npm ls failed (this may be expected if deps not installed): {}", e);
+            println!(
+                "npm ls failed (this may be expected if deps not installed): {}",
+                e
+            );
             return;
         }
     };
@@ -258,7 +270,10 @@ fn test_validate_npm_outputs() {
     // Read and validate saved npm output files
     let output_dir = raw_output_dir();
 
-    for entry in std::fs::read_dir(&output_dir).expect("Failed to read output directory").flatten() {
+    for entry in std::fs::read_dir(&output_dir)
+        .expect("Failed to read output directory")
+        .flatten()
+    {
         let path = entry.path();
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
 
@@ -279,7 +294,7 @@ fn test_validate_npm_outputs() {
 fn test_npm_command_resolution() {
     // Test command resolution functionality
     println!("Testing npm command resolution...");
-    
+
     if let Some(npm_path) = resolve_command("npm") {
         println!("✓ npm resolved to: {}", npm_path.display());
         assert!(npm_path.exists(), "Resolved npm path should exist");

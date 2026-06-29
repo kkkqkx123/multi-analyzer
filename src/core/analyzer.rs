@@ -1,10 +1,10 @@
 //! Analyzer trait definition
 //! defines the interface to the build tool analyzer
 
-use std::time::Duration;
-use super::types::{AnalysisResult, AnalyzeOptions, TechStack};
 use super::parser::OutputParser;
 use super::test_analyzer::TestAnalyzer;
+use super::types::{AnalysisResult, AnalyzeOptions, TechStack};
+use std::time::Duration;
 
 /// Analyzer Error Type
 #[derive(Debug)]
@@ -97,9 +97,12 @@ impl PluginRegistry {
     }
 
     /// Check if an analyzer is applicable for the given project path
-    pub fn check_applicable(&self, stack: TechStack, project_path: &std::path::Path) -> Result<(), AnalyzerError> {
-        let analyzer = self.get(stack)
-            .ok_or(AnalyzerError::NotApplicable)?;
+    pub fn check_applicable(
+        &self,
+        stack: TechStack,
+        project_path: &std::path::Path,
+    ) -> Result<(), AnalyzerError> {
+        let analyzer = self.get(stack).ok_or(AnalyzerError::NotApplicable)?;
 
         // Check if the analyzer supports any of the commands for this project
         let supported = analyzer.supported_commands();
@@ -111,8 +114,13 @@ impl PluginRegistry {
         let has_required_files = match stack {
             TechStack::Cargo => project_path.join("Cargo.toml").exists(),
             TechStack::Maven => project_path.join("pom.xml").exists(),
-            TechStack::Gradle => project_path.join("build.gradle").exists() || project_path.join("build.gradle.kts").exists(),
-            TechStack::Npm | TechStack::Pnpm | TechStack::Yarn => project_path.join("package.json").exists(),
+            TechStack::Gradle => {
+                project_path.join("build.gradle").exists()
+                    || project_path.join("build.gradle.kts").exists()
+            }
+            TechStack::Npm | TechStack::Pnpm | TechStack::Yarn => {
+                project_path.join("package.json").exists()
+            }
             _ => true, // For other stacks, assume applicable
         };
 

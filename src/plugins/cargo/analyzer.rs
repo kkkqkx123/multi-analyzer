@@ -2,8 +2,8 @@
 //! Run cargo commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
+    run_analyzer, AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
+    OutputParser, TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::CargoParser;
@@ -20,12 +20,17 @@ impl CargoAnalyzer {
     }
 
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("check");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("check");
 
-        // Build command directly from the command string
+        let is_nextest = command_str.starts_with("nextest");
+        let is_fmt = command_str == "fmt";
+
         let mut builder = CommandBuilder::new("cargo");
-        
-        // Split the command string and add as arguments
+
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
         }
@@ -84,7 +89,12 @@ impl CargoAnalyzer {
             builder = builder.arg("--no-default-features");
         }
 
-        builder.arg("--message-format=short")
+        // nextest and fmt do not support --message-format=short
+        if !is_nextest && !is_fmt {
+            builder = builder.arg("--message-format=short");
+        }
+
+        builder
     }
 }
 
@@ -100,31 +110,12 @@ impl BuildAnalyzer for CargoAnalyzer {
     }
 
     fn supported_commands(&self) -> Vec<&str> {
-        vec!["cargo", "rust"]
+        vec!["cargo", "rust", "cargo-nextest", "nextest"]
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        use crate::core::run_analysis_pipeline;
-        use crate::core::stream::StageResult;
-
         let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        let result = match run_analysis_pipeline(&self.parser, &output, options) {
-            StageResult::Complete(r) | StageResult::Degraded(r, _) => r,
-            StageResult::Failed(warnings) => {
-                return Err(AnalyzerError::ParseError(warnings.join("; ")));
-            }
-        };
-
-        // Validate that we got valid output
-        if output.contains("error: could not compile") && result.total_issues == 0 {
-            return Err(AnalyzerError::ParseError(
-                "Failed to parse cargo output: compilation failed but no issues were extracted".to_string()
-            ));
-        }
-
+        let result = run_analyzer(&builder, &self.parser, options)?;
         println!("Found {} issues", result.total_issues);
         Ok(result)
     }
@@ -149,14 +140,14 @@ impl TestAnalyzer for CargoAnalyzer {
 
     fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new("cargo");
-        
+
         // Default to "test" if no command specified
         let command_str = if options.command.is_empty() {
             "test"
         } else {
             &options.command
         };
-        
+
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
         }

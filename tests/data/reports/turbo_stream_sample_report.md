@@ -4,11 +4,11 @@
 
 ## Summary
 
-- **Total Issues**: 3
-- **Errors**: 3
+- **Total Issues**: 2
+- **Errors**: 2
 - **Warnings**: 0
 - **Info**: 0
-- **Files with Issues**: 2
+- **Files with Issues**: 1
 
 ## Issue Details (Grouped by File)
 
@@ -18,12 +18,6 @@
 |------|--------|-------|---------|
 | 4 | 7 | Error | 'unusedVariable' is assigned a value but never used |
 | 7 | 24 | Error | 'unusedParam' is defined but never used |
-
-### unknown
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| - | - | Error | run failed: command  exited (1) |
 
 ## Raw Output
 

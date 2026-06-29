@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 mod common;
-use common::{fixtures_dir, is_command_available, save_raw_output, generate_report, run_command};
+use common::{fixtures_dir, generate_report, is_command_available, run_command, save_raw_output};
 
 fn turbo_project_path() -> PathBuf {
     fixtures_dir().join("sample_turbo_project")
@@ -33,38 +33,38 @@ fn default_analyze_options(subcommand: &str) -> analyzer::core::AnalyzeOptions {
 
 #[test]
 fn test_turbo_tui_output_capture() {
-    use analyzer::plugins::npm::NpmAnalyzer;
     use analyzer::core::BuildAnalyzer;
-    
+    use analyzer::plugins::npm::NpmAnalyzer;
+
     if !is_command_available("npm") {
         println!("Skipping test: npm is not available");
         return;
     }
-    
+
     let project_path = turbo_project_path();
     let original_dir = std::env::current_dir().expect("Failed to get current directory");
-    
+
     // Change to the turbo project directory
     std::env::set_current_dir(&project_path).expect("Failed to change directory");
-    
+
     let analyzer = NpmAnalyzer::npm();
     let options = default_analyze_options("run lint");
-    
+
     let result = analyzer.analyze(&options);
-    
+
     // Restore original directory
     let _ = std::env::set_current_dir(&original_dir);
-    
+
     // The analyze should complete without error
     assert!(result.is_ok(), "Analyzer should complete without error");
-    
+
     let analysis = result.unwrap();
-    
+
     // Print debug info
     println!("Total issues found: {}", analysis.total_issues);
     println!("Errors: {}", analysis.errors().len());
     println!("Warnings: {}", analysis.warnings().len());
-    
+
     // We expect to find ESLint issues (unused vars, any type)
     // If turbo TUI mode prevents output capture, this will be 0 or 1 (command failed)
     if analysis.total_issues == 0 || (analysis.total_issues == 1 && !analysis.errors().is_empty()) {
@@ -77,48 +77,51 @@ fn test_turbo_tui_output_capture() {
 
 #[test]
 fn test_turbo_real_output() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
-    
+    use analyzer::plugins::npm::parser::NpmParser;
+
     if !is_command_available("npm") {
         println!("Skipping test: npm is not available");
         return;
     }
-    
+
     let project_path = turbo_project_path();
-    
+
     // Run actual npm run lint command
     let output = match run_command("npm", &["run", "lint"], &project_path) {
         Ok(output) => output,
         Err(e) => {
-            println!("npm run lint failed (expected if there are lint errors): {}", e);
+            println!(
+                "npm run lint failed (expected if there are lint errors): {}",
+                e
+            );
             // Try to get output even if command failed
             e.to_string()
         }
     };
-    
+
     // Save raw output
     save_raw_output("turbo_real_output", &output);
-    
+
     println!("=== Turbo Real Output ===");
     println!("{}", output);
     println!("========================");
-    
+
     // Parse output
     let parser = NpmParser::new();
     let issues = parser.parse(&output).data_or_default_owned();
-    
+
     // Generate report
     generate_report(
         "turbo_real_output",
         "Turbo with TUI",
         "npm run lint",
         &issues,
-        Some("raw_output/turbo_real_output.txt")
+        Some("raw_output/turbo_real_output.txt"),
     );
-    
+
     println!("Parsed {} issues from real turbo output", issues.len());
-    
+
     // Save the result for analysis
     if issues.is_empty() {
         println!("WARNING: No issues parsed from turbo output. This may indicate:");
@@ -130,9 +133,9 @@ fn test_turbo_real_output() {
 
 #[test]
 fn test_turbo_tui_output_format() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
-    
+    use analyzer::plugins::npm::parser::NpmParser;
+
     // Simulate the output format that turbo with TUI might produce
     // This tests if our parser can handle the format
     let turbo_tui_output = r#"
@@ -154,24 +157,24 @@ web:lint:
 Cached:    0 cached, 1 total
   Time:    1.234s 
 "#;
-    
+
     // Save raw output
     save_raw_output("turbo_tui_sample", turbo_tui_output);
-    
+
     let parser = NpmParser::new();
     let issues = parser.parse(turbo_tui_output).data_or_default_owned();
-    
+
     // Generate report
     generate_report(
         "turbo_tui_sample",
         "Turbo TUI Sample",
         "turbo run lint",
         &issues,
-        Some("raw_output/turbo_tui_sample.txt")
+        Some("raw_output/turbo_tui_sample.txt"),
     );
-    
+
     println!("Parsed {} issues from turbo TUI sample", issues.len());
-    
+
     // Should parse the ESLint issues
     assert!(
         issues.len() >= 5,
@@ -182,9 +185,9 @@ Cached:    0 cached, 1 total
 
 #[test]
 fn test_turbo_stream_output_format() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
-    
+    use analyzer::plugins::npm::parser::NpmParser;
+
     // Simulate the output format with turbo stream prefixes
     // This is what turbo outputs when using --output-logs=full
     let turbo_stream_output = r#"
@@ -207,24 +210,24 @@ Failed:    web#lint
 
  ERROR  run failed: command  exited (1)
 "#;
-    
+
     // Save raw output
     save_raw_output("turbo_stream_sample", turbo_stream_output);
-    
+
     let parser = NpmParser::new();
     let issues = parser.parse(turbo_stream_output).data_or_default_owned();
-    
+
     // Generate report
     generate_report(
         "turbo_stream_sample",
         "Turbo Stream Sample",
         "turbo run lint --output-logs=full",
         &issues,
-        Some("raw_output/turbo_stream_sample.txt")
+        Some("raw_output/turbo_stream_sample.txt"),
     );
-    
+
     println!("Parsed {} issues from turbo stream output", issues.len());
-    
+
     // Should parse the ESLint issues
     assert!(
         issues.len() >= 2,
@@ -235,39 +238,39 @@ Failed:    web#lint
 
 #[test]
 fn test_strip_turbo_prefix() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
-    
+    use analyzer::plugins::npm::parser::NpmParser;
+
     // Test that lines with turbo prefix are correctly parsed
     let output_with_prefix = r#"web:lint:    4:7   error    'unusedVariable' is assigned a value but never used  @typescript-eslint/no-unused-vars
 app:lint:     10:5  warning  Unexpected any                                     @typescript-eslint/no-explicit-any
 "#;
-    
+
     // Save raw output
     save_raw_output("turbo_prefix_test", output_with_prefix);
-    
+
     let parser = NpmParser::new();
     let issues = parser.parse(output_with_prefix).data_or_default_owned();
-    
+
     // Generate report
     generate_report(
         "turbo_prefix_test",
         "Turbo Prefix Test",
         "turbo run lint",
         &issues,
-        Some("raw_output/turbo_prefix_test.txt")
+        Some("raw_output/turbo_prefix_test.txt"),
     );
-    
+
     println!("Parsed {} issues with turbo prefix", issues.len());
-    
+
     assert_eq!(issues.len(), 2, "Should parse 2 issues with turbo prefix");
-    
+
     // Verify the first issue
     let first = &issues[0];
     assert_eq!(first.location.line_number, Some(4));
     assert!(matches!(first.level, analyzer::core::IssueLevel::Error));
     assert!(first.message.contains("unusedVariable"));
-    
+
     // Verify the second issue
     let second = &issues[1];
     assert_eq!(second.location.line_number, Some(10));
@@ -277,9 +280,9 @@ app:lint:     10:5  warning  Unexpected any                                     
 
 #[test]
 fn test_turbo_tui_with_borders() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
-    
+    use analyzer::plugins::npm::parser::NpmParser;
+
     // Test parsing real TUI format with border characters
     // This is what turbo outputs when running in a real terminal with TUI mode
     let turbo_tui_with_borders = r#"╭──────────────────────────────────────────────────────────────────────────╮    
@@ -302,38 +305,38 @@ D:\project\packages\storage\src\json\base-json-storage.ts
 
 ✖ 7 problems (0 errors, 7 warnings)
 └─ @graph-agent/storage#lint ──"#;
-    
+
     // Save raw output
     save_raw_output("turbo_tui_borders", turbo_tui_with_borders);
-    
+
     let parser = NpmParser::new();
     let issues = parser.parse(turbo_tui_with_borders).data_or_default_owned();
-    
+
     // Generate report
     generate_report(
         "turbo_tui_borders",
         "Turbo TUI with Borders",
         "turbo run lint (TUI mode)",
         &issues,
-        Some("raw_output/turbo_tui_borders.txt")
+        Some("raw_output/turbo_tui_borders.txt"),
     );
-    
+
     println!("Parsed {} issues from turbo TUI with borders", issues.len());
-    
+
     // Should parse the ESLint issues (2 warnings)
     assert!(
         issues.len() >= 2,
         "Should parse at least 2 ESLint issues from turbo TUI with borders, found {}",
         issues.len()
     );
-    
+
     // Verify the first issue
     let first = &issues[0];
     assert_eq!(first.location.line_number, Some(16));
     assert_eq!(first.location.column_number, Some(3));
     assert!(matches!(first.level, analyzer::core::IssueLevel::Warning));
     assert!(first.message.contains("CompressionResult"));
-    
+
     // Verify the second issue
     let second = &issues[1];
     assert_eq!(second.location.line_number, Some(422));
@@ -344,9 +347,9 @@ D:\project\packages\storage\src\json\base-json-storage.ts
 
 #[test]
 fn test_turbo_tui_scoped_packages() {
-    use analyzer::plugins::npm::parser::NpmParser;
     use analyzer::core::OutputParser;
-    
+    use analyzer::plugins::npm::parser::NpmParser;
+
     // Test parsing output with scoped packages (@scope/package#task format)
     let turbo_scoped_output = r#"┌─ @graph-agent/script-executors#lint > cache hit, replaying logs 30d596d992b3838b
 
@@ -364,37 +367,41 @@ D:\project\packages\script-executors\src\core\types.ts
 
 ✖ 4 problems (0 errors, 4 warnings)
 └─ @graph-agent/script-executors#lint ──"#;
-    
+
     // Save raw output
     save_raw_output("turbo_scoped_packages", turbo_scoped_output);
-    
+
     let parser = NpmParser::new();
     let issues = parser.parse(turbo_scoped_output).data_or_default_owned();
-    
+
     // Generate report
     generate_report(
         "turbo_scoped_packages",
         "Turbo Scoped Packages",
         "turbo run lint (scoped packages)",
         &issues,
-        Some("raw_output/turbo_scoped_packages.txt")
+        Some("raw_output/turbo_scoped_packages.txt"),
     );
-    
+
     println!("Parsed {} issues from turbo scoped packages", issues.len());
-    
+
     // Should parse 4 ESLint issues
     assert_eq!(
-        issues.len(), 4,
+        issues.len(),
+        4,
         "Should parse exactly 4 ESLint issues from turbo scoped packages output, found {}",
         issues.len()
     );
-    
+
     // Verify all issues are warnings
     for issue in &issues {
         assert!(matches!(issue.level, analyzer::core::IssueLevel::Warning));
     }
-    
+
     // Verify file paths
-    assert!(issues[0].location.file_path.contains("BaseScriptExecutor.ts"));
+    assert!(issues[0]
+        .location
+        .file_path
+        .contains("BaseScriptExecutor.ts"));
     assert!(issues[1].location.file_path.contains("types.ts"));
 }

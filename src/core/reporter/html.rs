@@ -54,7 +54,10 @@ impl HtmlReporter {
 
         // Determining if a Lint Report
         let is_lint = all_messages.iter().any(|m| {
-            m.contains("eslint") || m.contains("clippy") || m.contains("lint") || m.contains("style")
+            m.contains("eslint")
+                || m.contains("clippy")
+                || m.contains("lint")
+                || m.contains("style")
         });
 
         if is_lint {
@@ -62,10 +65,7 @@ impl HtmlReporter {
         }
 
         // Defaults to a generic analysis report
-        (
-            "Analysis Report".to_string(),
-            "Summary".to_string(),
-        )
+        ("Analysis Report".to_string(), "Summary".to_string())
     }
 }
 
@@ -102,15 +102,23 @@ impl Reporter for HtmlReporter {
 
         // summaries
         html.push_str(&format!("<h2>{}</h2>\n", summary_title));
-        
+
         if result.total_issues == 0 {
             html.push_str("<p>&#x2705; No issues found.</p>\n");
         } else {
             html.push_str("<ul>\n");
-            html.push_str(&format!("<li><strong>Total:</strong> {}</li>\n", result.total_issues));
-            
+            html.push_str(&format!(
+                "<li><strong>Total:</strong> {}</li>\n",
+                result.total_issues
+            ));
+
             // Sort by severity
-            let level_order = [IssueLevel::Error, IssueLevel::Warning, IssueLevel::Info, IssueLevel::Hint];
+            let level_order = [
+                IssueLevel::Error,
+                IssueLevel::Warning,
+                IssueLevel::Info,
+                IssueLevel::Hint,
+            ];
             for level in &level_order {
                 if let Some(count) = result.issues_by_level.get(level) {
                     let (class, icon) = match level {
@@ -125,14 +133,22 @@ impl Reporter for HtmlReporter {
                     ));
                 }
             }
-            html.push_str(&format!("<li><strong>Categories:</strong> {}</li>\n", result.unique_patterns.len()));
-            html.push_str(&format!("<li><strong>Files Affected:</strong> {}</li>\n", result.issues_by_file.len()));
+            html.push_str(&format!(
+                "<li><strong>Categories:</strong> {}</li>\n",
+                result.unique_patterns.len()
+            ));
+            html.push_str(&format!(
+                "<li><strong>Files Affected:</strong> {}</li>\n",
+                result.issues_by_file.len()
+            ));
             html.push_str("</ul>\n");
 
             // Detailed tables
             html.push_str("<h2>Details</h2>\n");
             html.push_str("<table>\n");
-            html.push_str("<tr><th>Severity</th><th>File</th><th>Position</th><th>Description</th></tr>\n");
+            html.push_str(
+                "<tr><th>Severity</th><th>File</th><th>Position</th><th>Description</th></tr>\n",
+            );
 
             for issues in result.issues_by_file.values() {
                 for issue in issues {
@@ -142,13 +158,16 @@ impl Reporter for HtmlReporter {
                         _ => "info",
                     };
 
-                    let location = match (issue.location.line_number, issue.location.column_number) {
+                    let location = match (issue.location.line_number, issue.location.column_number)
+                    {
                         (Some(line), Some(col)) => format!("line {}, col {}", line, col),
                         (Some(line), None) => format!("line {}", line),
                         _ => "-".to_string(),
                     };
 
-                    let code_display = issue.code.as_ref()
+                    let code_display = issue
+                        .code
+                        .as_ref()
                         .map(|c| format!(" [{}]", c))
                         .unwrap_or_default();
 
@@ -166,7 +185,7 @@ impl Reporter for HtmlReporter {
 
             html.push_str("</table>\n");
         }
-        
+
         html.push_str("</body>\n</html>");
 
         Ok(html)

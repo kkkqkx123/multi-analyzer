@@ -2,8 +2,8 @@
 //! Run go commands and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
+    run_analyzer, AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
+    OutputParser, TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::GoParser;
@@ -21,7 +21,11 @@ impl GoAnalyzer {
 
     /// Create command builder based on command string
     fn create_command_builder(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("build ./...");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("build ./...");
         CommandBuilder::from_exec_string(&format!("go {}", command_str))
     }
 }
@@ -42,22 +46,10 @@ impl BuildAnalyzer for GoAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        use crate::core::run_analysis_pipeline;
-        use crate::core::stream::StageResult;
-
         let builder = self.create_command_builder(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        match run_analysis_pipeline(&self.parser, &output, options) {
-            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
-                println!("Found {} issues", result.total_issues);
-                Ok(result)
-            }
-            StageResult::Failed(warnings) => {
-                Err(AnalyzerError::ParseError(warnings.join("; ")))
-            }
-        }
+        let result = run_analyzer(&builder, &self.parser, options)?;
+        println!("Found {} issues", result.total_issues);
+        Ok(result)
     }
 
     fn parser(&self) -> &dyn OutputParser {
@@ -80,14 +72,14 @@ impl TestAnalyzer for GoAnalyzer {
 
     fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new("go");
-        
+
         // Default to "test -v ./..." if no command specified
         let command_str = if options.command.is_empty() {
             "test -v ./..."
         } else {
             &options.command
         };
-        
+
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
         }

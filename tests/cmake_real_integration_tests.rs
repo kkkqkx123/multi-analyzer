@@ -1,13 +1,15 @@
 //! CMake Real Integration Tests
 //! Execute actual CMake commands with real compilers to verify parsing
 
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 mod common;
 use common::{
-    fixtures_dir, save_raw_output, generate_report,
-    vs_env::{is_vs_dev_shell_available, run_with_vs_env, check_cmake, check_msvc, get_cmake_generator}
+    fixtures_dir, generate_report, save_raw_output,
+    vs_env::{
+        check_cmake, check_msvc, get_cmake_generator, is_vs_dev_shell_available, run_with_vs_env,
+    },
 };
 
 use analyzer::core::OutputParser;
@@ -40,7 +42,10 @@ fn test_cmake_configure_with_msvc() {
 
     let project_path = cmake_project_path();
     if !project_path.exists() {
-        println!("Skipping test: CMake test project not found at {:?}", project_path);
+        println!(
+            "Skipping test: CMake test project not found at {:?}",
+            project_path
+        );
         return;
     }
 
@@ -48,11 +53,7 @@ fn test_cmake_configure_with_msvc() {
 
     // Run CMake configuration with VS environment
     let generator = get_cmake_generator();
-    let output = match run_with_vs_env(
-        "cmake",
-        &["-G", generator, ".."],
-        &build_dir
-    ) {
+    let output = match run_with_vs_env("cmake", &["-G", generator, ".."], &build_dir) {
         Ok(output) => output,
         Err(e) => {
             println!("CMake configure failed: {}", e);
@@ -73,7 +74,7 @@ fn test_cmake_configure_with_msvc() {
         "CMake Configure (MSVC)",
         &format!("cmake -G \"{}\" ..", generator),
         &issues,
-        Some("raw_output/cmake_configure_msvc.txt")
+        Some("raw_output/cmake_configure_msvc.txt"),
     );
 
     println!("=== CMake Configure Output (MSVC) ===");
@@ -81,17 +82,25 @@ fn test_cmake_configure_with_msvc() {
     println!("\n=== Parsed Issues ===");
     println!("Found {} issues", issues.len());
     for issue in &issues {
-        println!("  [{:?}] {}:{} - {}",
+        println!(
+            "  [{:?}] {}:{} - {}",
             issue.level,
             issue.location.file_path,
-            issue.location.line_number.map(|l| l.to_string()).unwrap_or_else(|| "-".to_string()),
+            issue
+                .location
+                .line_number
+                .map(|l| l.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             issue.message
         );
     }
 
     // Verify that we can parse CMake output
     // Note: Configuration may succeed or fail depending on the test project
-    println!("✓ CMake configure test completed with {} issues parsed", issues.len());
+    println!(
+        "✓ CMake configure test completed with {} issues parsed",
+        issues.len()
+    );
 
     // Cleanup
     fs::remove_dir_all(&build_dir).ok();
@@ -148,7 +157,7 @@ fn test_cmake_build_with_msvc() {
         "CMake Build (MSVC)",
         "cmake --build . --verbose",
         &issues,
-        Some("raw_output/cmake_build_msvc.txt")
+        Some("raw_output/cmake_build_msvc.txt"),
     );
 
     println!("=== CMake Build Output (MSVC) ===");
@@ -157,8 +166,14 @@ fn test_cmake_build_with_msvc() {
     println!("Found {} issues", issues.len());
 
     // Verify we can detect compiler errors
-    let error_count = issues.iter().filter(|i| matches!(i.level, analyzer::core::IssueLevel::Error)).count();
-    let warning_count = issues.iter().filter(|i| matches!(i.level, analyzer::core::IssueLevel::Warning)).count();
+    let error_count = issues
+        .iter()
+        .filter(|i| matches!(i.level, analyzer::core::IssueLevel::Error))
+        .count();
+    let warning_count = issues
+        .iter()
+        .filter(|i| matches!(i.level, analyzer::core::IssueLevel::Warning))
+        .count();
 
     println!("  Errors: {}", error_count);
     println!("  Warnings: {}", warning_count);
@@ -201,9 +216,9 @@ fn test_msvc_compiler_output_parsing() {
             "/W4",
             "/c",
             main_cpp.to_str().unwrap(),
-            &format!("/Fo{}", temp_dir.join("main.obj").to_str().unwrap())
+            &format!("/Fo{}", temp_dir.join("main.obj").to_str().unwrap()),
         ],
-        &project_path
+        &project_path,
     ) {
         Ok(output) => output,
         Err(e) => {
@@ -226,7 +241,7 @@ fn test_msvc_compiler_output_parsing() {
         "MSVC Compile",
         "cl /EHsc /W4 /c src/main.cpp",
         &issues,
-        Some("raw_output/msvc_compile.txt")
+        Some("raw_output/msvc_compile.txt"),
     );
 
     println!("=== MSVC Compile Output ===");
@@ -235,19 +250,28 @@ fn test_msvc_compiler_output_parsing() {
     println!("Found {} issues", issues.len());
 
     for issue in &issues {
-        println!("  [{:?}] {}({},{}) - {}",
+        println!(
+            "  [{:?}] {}({},{}) - {}",
             issue.level,
             issue.location.file_path,
-            issue.location.line_number.map(|l| l.to_string()).unwrap_or_else(|| "-".to_string()),
-            issue.location.column_number.map(|c| c.to_string()).unwrap_or_else(|| "-".to_string()),
+            issue
+                .location
+                .line_number
+                .map(|l| l.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            issue
+                .location
+                .column_number
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             issue.message
         );
     }
 
     // Verify we found the expected errors
-    let has_undeclared_var = issues.iter().any(|i| {
-        i.message.contains("undeclared") || i.message.contains("undefined")
-    });
+    let has_undeclared_var = issues
+        .iter()
+        .any(|i| i.message.contains("undeclared") || i.message.contains("undefined"));
 
     if has_undeclared_var {
         println!("✓ Successfully detected 'undeclared variable' error from MSVC output");
@@ -289,9 +313,9 @@ fn test_clang_compiler_output_parsing() {
             "-c",
             main_cpp.to_str().unwrap(),
             "-o",
-            temp_dir.join("main.o").to_str().unwrap()
+            temp_dir.join("main.o").to_str().unwrap(),
         ],
-        &project_path
+        &project_path,
     ) {
         Ok(output) => output,
         Err(e) => {
@@ -313,7 +337,7 @@ fn test_clang_compiler_output_parsing() {
         "Clang Compile",
         &format!("{} -std=c++17 -Wall -c src/main.cpp", clang_cmd),
         &issues,
-        Some("raw_output/clang_compile.txt")
+        Some("raw_output/clang_compile.txt"),
     );
 
     println!("=== Clang Compile Output ===");
@@ -322,19 +346,28 @@ fn test_clang_compiler_output_parsing() {
     println!("Found {} issues", issues.len());
 
     for issue in &issues {
-        println!("  [{:?}] {}:{}:{} - {}",
+        println!(
+            "  [{:?}] {}:{}:{} - {}",
             issue.level,
             issue.location.file_path,
-            issue.location.line_number.map(|l| l.to_string()).unwrap_or_else(|| "-".to_string()),
-            issue.location.column_number.map(|c| c.to_string()).unwrap_or_else(|| "-".to_string()),
+            issue
+                .location
+                .line_number
+                .map(|l| l.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            issue
+                .location
+                .column_number
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             issue.message
         );
     }
 
     // Verify we found the expected errors
-    let has_undeclared_var = issues.iter().any(|i| {
-        i.message.contains("undeclared") || i.message.contains("undefined")
-    });
+    let has_undeclared_var = issues
+        .iter()
+        .any(|i| i.message.contains("undeclared") || i.message.contains("undefined"));
 
     if has_undeclared_var {
         println!("✓ Successfully detected 'undeclared variable' error from Clang output");

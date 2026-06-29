@@ -7,16 +7,19 @@ use std::sync::OnceLock;
 
 fn gcc_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(
-        r"^(.*?):(\d+):(\d+):\s*(error|warning|note):\s*(.*?)(?:\s*\[(.*?)\])?$"
-    ).unwrap())
+    RE.get_or_init(|| {
+        Regex::new(r"^(.*?):(\d+):(\d+):\s*(error|warning|note):\s*(.*?)(?:\s*\[(.*?)\])?$")
+            .unwrap()
+    })
 }
 
 fn msvc_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(
+    RE.get_or_init(|| {
+        Regex::new(
         r"^(.*?)\((\d+)\s*(?:,\s*(\d+))?\)\s*:\s*(error|warning|fatal error)\s+(\w+)?\s*:\s*(.*)$"
-    ).unwrap())
+    ).unwrap()
+    })
 }
 
 /// Compiler type for C++ parsers
@@ -97,8 +100,7 @@ impl CppParser {
             if let Some(caps) = re.captures(line) {
                 let file_path = caps[1].to_string();
                 let line_num = caps[2].parse::<u32>().ok();
-                let col_num = caps.get(3)
-                    .and_then(|m| m.as_str().parse::<u32>().ok());
+                let col_num = caps.get(3).and_then(|m| m.as_str().parse::<u32>().ok());
                 let severity = &caps[4];
                 let code = caps.get(5).map(|m| m.as_str().to_string());
                 let message = caps[6].to_string();
@@ -135,7 +137,10 @@ impl CppParser {
             CompilerType::Clang
         } else if output.contains("gcc version") || output.contains("g++") {
             CompilerType::Gcc
-        } else if output.contains("Microsoft") || output.contains("cl.exe") || output.contains("Microsoft (R) C/C++") {
+        } else if output.contains("Microsoft")
+            || output.contains("cl.exe")
+            || output.contains("Microsoft (R) C/C++")
+        {
             CompilerType::Msvc
         } else {
             CompilerType::Gcc
@@ -149,9 +154,7 @@ impl OutputParser for CppParser {
             CompilerType::Gcc | CompilerType::Clang => {
                 ParseResult::Full(self.parse_gcc_style(output))
             }
-            CompilerType::Msvc => {
-                ParseResult::Full(self.parse_msvc_style(output))
-            }
+            CompilerType::Msvc => ParseResult::Full(self.parse_msvc_style(output)),
         }
     }
 }

@@ -12,6 +12,12 @@
 
 ## Issue Details (Grouped by File)
 
+### D:\project\packages\script-executors\src\core\base\BaseScriptExecutor.ts
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 167 | 12 | Warning | 'script' is defined but never used |
+
 ### D:\project\packages\script-executors\src\core\types.ts
 
 | Line | Column | Level | Message |
@@ -19,12 +25,6 @@
 | 6 | 3 | Warning | 'Script' is defined but never used |
 | 8 | 3 | Warning | 'ScriptExecutionOptions' is defined but never used |
 | 9 | 3 | Warning | 'ScriptExecutionResult' is defined but never used |
-
-### D:\project\packages\script-executors\src\core\base\BaseScriptExecutor.ts
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 167 | 12 | Warning | 'script' is defined but never used |
 
 ## Raw Output
 

@@ -209,8 +209,7 @@ impl BaseParser {
                 .with_line(line_num)
                 .with_column(col)
         } else {
-            Location::new(file_path.to_string())
-                .with_line(line_num)
+            Location::new(file_path.to_string()).with_line(line_num)
         };
 
         let mut issue = Issue::new(level, message.to_string(), location);
@@ -225,7 +224,7 @@ impl BaseParser {
     /// 解析带括号的格式：file(line,col): level: message
     pub fn parse_parentheses_format(&self, line: &str) -> Option<Issue> {
         let trimmed = line.trim();
-        
+
         if let Some(open_paren) = trimmed.find('(') {
             if let Some(close_paren) = trimmed.find(')') {
                 // Ensure close_paren is after open_paren
@@ -246,7 +245,10 @@ impl BaseParser {
                     let col_num = loc_parts[1].trim().parse::<u32>().ok()?;
 
                     if after_paren.starts_with(':') {
-                        let rest = after_paren.strip_prefix(':').map(|s| s.trim()).unwrap_or(after_paren);
+                        let rest = after_paren
+                            .strip_prefix(':')
+                            .map(|s| s.trim())
+                            .unwrap_or(after_paren);
                         let level = self.detect_level(rest)?;
 
                         let (code, message) = if let Some(colon_pos) = rest.find(':') {
@@ -256,18 +258,21 @@ impl BaseParser {
                             }
                             let before_colon = rest[..colon_pos].trim();
                             let msg_part = rest[colon_pos + 1..].trim();
-                            
+
                             let parts: Vec<&str> = before_colon.split_whitespace().collect();
                             let code_part = parts.last().unwrap_or(&before_colon);
-                            
-                            let formatted_code = if code_part.starts_with('[') && code_part.ends_with(']') {
-                                Some(code_part.to_string())
-                            } else if code_part.chars().all(|c| c.is_alphanumeric()) && code_part.len() > 1 {
-                                Some(format!("[{}]", code_part))
-                            } else {
-                                None
-                            };
-                            
+
+                            let formatted_code =
+                                if code_part.starts_with('[') && code_part.ends_with(']') {
+                                    Some(code_part.to_string())
+                                } else if code_part.chars().all(|c| c.is_alphanumeric())
+                                    && code_part.len() > 1
+                                {
+                                    Some(format!("[{}]", code_part))
+                                } else {
+                                    None
+                                };
+
                             (formatted_code, msg_part.to_string())
                         } else {
                             (None, rest.to_string())
@@ -534,10 +539,27 @@ error[E0308]: mismatched types
         let issues = collector.collect_all_blocks(output);
         assert_eq!(issues.len(), 1, "Expected 1 issue, got {}", issues.len());
 
-        assert_eq!(issues[0].location.file_path, "src/main.rs", "Expected file_path = src/main.rs, got {}", issues[0].location.file_path);
-        assert_eq!(issues[0].message, "mismatched types", "Expected message = mismatched types, got {}", issues[0].message);
-        assert_eq!(issues[0].location.line_number, Some(10), "Expected line_number = 10, got {:?}", issues[0].location.line_number);
-        assert!(matches!(issues[0].level, IssueLevel::Error), "Expected Error level, got {:?}", issues[0].level);
+        assert_eq!(
+            issues[0].location.file_path, "src/main.rs",
+            "Expected file_path = src/main.rs, got {}",
+            issues[0].location.file_path
+        );
+        assert_eq!(
+            issues[0].message, "mismatched types",
+            "Expected message = mismatched types, got {}",
+            issues[0].message
+        );
+        assert_eq!(
+            issues[0].location.line_number,
+            Some(10),
+            "Expected line_number = 10, got {:?}",
+            issues[0].location.line_number
+        );
+        assert!(
+            matches!(issues[0].level, IssueLevel::Error),
+            "Expected Error level, got {:?}",
+            issues[0].level
+        );
     }
 
     #[test]
@@ -601,7 +623,10 @@ warning: second issue
                 line.trim() == "---"
             }
             fn extract_issues(&self, block: &[String]) -> Vec<Issue> {
-                let msg = block.first().map(|l| l.trim().to_string()).unwrap_or_default();
+                let msg = block
+                    .first()
+                    .map(|l| l.trim().to_string())
+                    .unwrap_or_default();
                 vec![Issue::new(IssueLevel::Error, msg, Location::new("unknown"))]
             }
         }

@@ -28,5 +28,3 @@ impl OutputParser for ClangParser {
         <CppParser as OutputParser>::parse(&self.inner, output)
     }
 }
-
-

@@ -10,11 +10,12 @@ use crate::core::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GoCommandType {
     #[default]
+    Unknown,
     Build,
     Vet,
     Test,
     GolangciLint,
-    Unknown,
+    GoFmt,
 }
 
 pub struct GoParser {
@@ -31,19 +32,29 @@ impl GoParser {
     /// Auto-detect command type from output content
     fn detect_command_type(&self, output: &str) -> GoCommandType {
         let lines: Vec<&str> = output.lines().collect();
+        let mut fmt_file_count = 0usize;
+        let mut other_count = 0usize;
 
         for line in &lines {
             let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
 
             // golangci-lint has linter names in parentheses
             if trimmed.contains('(') && trimmed.contains(')') {
                 if let Some(open_paren) = trimmed.rfind('(') {
                     if let Some(close_paren) = trimmed.rfind(')') {
                         let linter_name = &trimmed[open_paren + 1..close_paren];
-                        // Common linter names
                         let known_linters = [
-                            "errcheck", "gosimple", "govet", "ineffassign",
-                            "staticcheck", "unused", "deadcode", "gofmt",
+                            "errcheck",
+                            "gosimple",
+                            "govet",
+                            "ineffassign",
+                            "staticcheck",
+                            "unused",
+                            "deadcode",
+                            "gofmt",
                         ];
                         if known_linters.iter().any(|l| linter_name.contains(l)) {
                             return GoCommandType::GolangciLint;
@@ -53,32 +64,71 @@ impl GoParser {
             }
 
             // go test has specific test output markers
-            if trimmed.starts_with("=== RUN") ||
-               trimmed.starts_with("--- PASS") ||
-               trimmed.starts_with("--- FAIL") ||
-               trimmed.starts_with("--- SKIP") {
+            if trimmed.starts_with("=== RUN")
+                || trimmed.starts_with("--- PASS")
+                || trimmed.starts_with("--- FAIL")
+                || trimmed.starts_with("--- SKIP")
+            {
                 return GoCommandType::Test;
             }
 
             // go vet typically has these patterns (but not compiler errors)
-            if trimmed.contains("Printf format") ||
-               (trimmed.contains("return value") && trimmed.contains("is not checked")) {
+            if trimmed.contains("Printf format")
+                || (trimmed.contains("return value") && trimmed.contains("is not checked"))
+            {
                 return GoCommandType::Vet;
             }
 
             // go build errors have specific keywords
-            if trimmed.contains("undefined:") ||
-               trimmed.contains("cannot use") ||
-               trimmed.contains("not declared") ||
-               trimmed.contains("declared but not used") {
+            if trimmed.contains("undefined:")
+                || trimmed.contains("cannot use")
+                || trimmed.contains("not declared")
+                || trimmed.contains("declared but not used")
+            {
                 return GoCommandType::Build;
             }
+
+            // go fmt / gofmt output: file paths with .go extension
+            if trimmed.ends_with(".go") && !trimmed.contains(':') {
+                fmt_file_count += 1;
+            } else {
+                other_count += 1;
+            }
+        }
+
+        // If most lines are .go file paths, it's go fmt output
+        if fmt_file_count > 0 && fmt_file_count >= other_count {
+            return GoCommandType::GoFmt;
         }
 
         GoCommandType::Unknown
     }
 
+    /// Parse a single line based on provided command type
+    fn parse_line_with_type(&self, line: &str, cmd_type: GoCommandType) -> Option<Issue> {
+        match cmd_type {
+            GoCommandType::Build => self.parse_go_build_error(line),
+            GoCommandType::Vet => self.parse_go_vet_error(line),
+            GoCommandType::GolangciLint => self.parse_golangci_lint_error(line),
+            GoCommandType::Test => self.parse_go_build_error(line),
+            GoCommandType::GoFmt => self.parse_gofmt_line(line),
+            GoCommandType::Unknown => {
+                if let Some(issue) = self.parse_golangci_lint_error(line) {
+                    return Some(issue);
+                }
+                if let Some(issue) = self.parse_go_vet_error(line) {
+                    return Some(issue);
+                }
+                if let Some(issue) = self.parse_gofmt_line(line) {
+                    return Some(issue);
+                }
+                self.parse_go_build_error(line)
+            }
+        }
+    }
+
     /// Parse a single line based on detected or set command type
+    #[allow(dead_code)]
     fn parse_line(&self, line: &str) -> Option<Issue> {
         match self.command_type {
             GoCommandType::Build => self.parse_go_build_error(line),
@@ -88,12 +138,16 @@ impl GoParser {
                 // For test, we parse compilation errors only
                 self.parse_go_build_error(line)
             }
+            GoCommandType::GoFmt => self.parse_gofmt_line(line),
             GoCommandType::Unknown => {
                 // Try all parsers in order of specificity
                 if let Some(issue) = self.parse_golangci_lint_error(line) {
                     return Some(issue);
                 }
                 if let Some(issue) = self.parse_go_vet_error(line) {
+                    return Some(issue);
+                }
+                if let Some(issue) = self.parse_gofmt_line(line) {
                     return Some(issue);
                 }
                 self.parse_go_build_error(line)
@@ -151,10 +205,11 @@ impl GoParser {
         }
 
         // Skip lines that look like go build errors (contain specific keywords)
-        if trimmed.contains("undefined:") ||
-           trimmed.contains("cannot use") ||
-           trimmed.contains("not declared") ||
-           trimmed.contains("declared but not used") {
+        if trimmed.contains("undefined:")
+            || trimmed.contains("cannot use")
+            || trimmed.contains("not declared")
+            || trimmed.contains("declared but not used")
+        {
             return None;
         }
 
@@ -218,7 +273,9 @@ impl GoParser {
         // Try to extract error code (e.g., SA1000, ST1005)
         let (code, final_message) = if let Some(first_colon) = message.find(':') {
             let potential_code = message[..first_colon].trim();
-            if potential_code.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            if potential_code
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
                 && !potential_code.is_empty()
                 && potential_code.chars().next().unwrap().is_ascii_uppercase()
             {
@@ -245,6 +302,32 @@ impl GoParser {
         }
 
         Some(issue)
+    }
+
+    /// Parse gofmt / go fmt output.
+    ///
+    /// `gofmt -l .` outputs file paths that differ from the standard format,
+    /// one per line. `go fmt ./...` outputs modified file paths.
+    fn parse_gofmt_line(&self, line: &str) -> Option<Issue> {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            return None;
+        }
+
+        // go fmt output is just file paths (e.g., "./main.go" or "main.go")
+        if trimmed.ends_with(".go") && !trimmed.contains(':') {
+            let location = Location::new(trimmed.to_string());
+            return Some(
+                Issue::new(
+                    IssueLevel::Warning,
+                    "File requires formatting".to_string(),
+                    location,
+                )
+                .with_code("FORMAT".to_string()),
+            );
+        }
+
+        None
     }
 
     /// Parse go test output format
@@ -404,15 +487,14 @@ impl OutputParser for GoParser {
         let mut issues = Vec::new();
         let lines: Vec<&str> = output.lines().collect();
 
-        // Auto-detect command type if not set
-        let _command_type = if self.command_type == GoCommandType::Unknown {
+        let command_type = if self.command_type == GoCommandType::Unknown {
             self.detect_command_type(output)
         } else {
             self.command_type
         };
 
         for line in &lines {
-            if let Some(issue) = self.parse_line(line) {
+            if let Some(issue) = self.parse_line_with_type(line, command_type) {
                 issues.push(issue);
             }
         }
@@ -420,8 +502,6 @@ impl OutputParser for GoParser {
         ParseResult::Full(issues)
     }
 }
-
-
 
 impl TestOutputParser for GoParser {
     fn parse_test_output(&self, output: &str) -> ParsedTestOutput {
@@ -455,7 +535,10 @@ mod tests {
         assert_eq!(issue.location.file_path, "./main.go");
         assert_eq!(issue.location.line_number, Some(15));
         assert_eq!(issue.location.column_number, Some(10));
-        assert_eq!(issue.message, "Printf format %s has arg x of wrong type int");
+        assert_eq!(
+            issue.message,
+            "Printf format %s has arg x of wrong type int"
+        );
         assert!(matches!(issue.level, IssueLevel::Warning));
     }
 
@@ -468,7 +551,10 @@ mod tests {
         assert_eq!(issue.location.file_path, "main.go");
         assert_eq!(issue.location.line_number, Some(20));
         assert_eq!(issue.location.column_number, Some(3));
-        assert_eq!(issue.message, "Error return value of `fmt.Println` is not checked");
+        assert_eq!(
+            issue.message,
+            "Error return value of `fmt.Println` is not checked"
+        );
         assert_eq!(issue.context, Some("linter: errcheck".to_string()));
         assert!(matches!(issue.level, IssueLevel::Warning));
     }
@@ -550,7 +636,10 @@ ok  	example.com/myproject	0.061s
     fn test_detect_command_type_golangci_lint() {
         let parser = GoParser::new();
         let output = "main.go:10:5: error (errcheck)";
-        assert_eq!(parser.detect_command_type(output), GoCommandType::GolangciLint);
+        assert_eq!(
+            parser.detect_command_type(output),
+            GoCommandType::GolangciLint
+        );
     }
 
     #[test]

@@ -2,8 +2,8 @@
 //! Run the npm/pnpm/yarn command and parse the output
 
 use crate::core::{
-    AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder, OutputParser,
-    TechStack, TestAnalyzer, TestOptions, TestOutputParser,
+    run_analyzer, AnalysisResult, AnalyzeOptions, AnalyzerError, BuildAnalyzer, CommandBuilder,
+    OutputParser, TechStack, TestAnalyzer, TestOptions, TestOutputParser,
 };
 
 use super::parser::NpmParser;
@@ -25,17 +25,22 @@ impl PackageManager {
     }
 
     fn build_command(&self, options: &AnalyzeOptions) -> CommandBuilder {
-        let command_str = options.subcommand.as_ref().map(|s| s.as_str()).unwrap_or("");
+        let command_str = options
+            .subcommand
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("");
 
         // Build command directly from the command string
         let mut builder = CommandBuilder::new(self.as_str());
-        
+
         // Split the command string and add as arguments
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
         }
-        
-        builder
+
+        // Set CI=true to disable turbo TUI mode and get plain text output
+        builder.env("CI", "true")
     }
 }
 
@@ -85,22 +90,10 @@ impl BuildAnalyzer for NpmAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        use crate::core::run_analysis_pipeline;
-        use crate::core::stream::StageResult;
-
         let builder = self.package_manager.build_command(options);
-        let output = builder.execute()?;
-
-        println!("Parsing output...");
-        match run_analysis_pipeline(&self.parser, &output, options) {
-            StageResult::Complete(result) | StageResult::Degraded(result, _) => {
-                println!("Found {} issues", result.total_issues);
-                Ok(result)
-            }
-            StageResult::Failed(warnings) => {
-                Err(AnalyzerError::ParseError(warnings.join("; ")))
-            }
-        }
+        let result = run_analyzer(&builder, &self.parser, options)?;
+        println!("Found {} issues", result.total_issues);
+        Ok(result)
     }
 
     fn parser(&self) -> &dyn OutputParser {
@@ -123,14 +116,14 @@ impl TestAnalyzer for NpmAnalyzer {
 
     fn build_test_command(&self, options: &TestOptions) -> CommandBuilder {
         let mut builder = CommandBuilder::new(self.package_manager.as_str());
-        
+
         // Default to "test" if no command specified
         let command_str = if options.command.is_empty() {
             "test"
         } else {
             &options.command
         };
-        
+
         for arg in command_str.split_whitespace() {
             builder = builder.arg(arg);
         }
