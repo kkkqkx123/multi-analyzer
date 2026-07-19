@@ -338,6 +338,17 @@ fn parse_options_from_args(args: &[String], start: usize, options: &mut AnalyzeO
             "--no-short-circuit" => {
                 options.success_short_circuit = false;
             }
+            // === Result Limits ===
+            "--max-issues" => {
+                if i + 1 < args.len() {
+                    let val = args[i + 1].parse::<usize>().unwrap_or_else(|e| {
+                        eprintln!("Error: Invalid --max-issues value '{}': {}", args[i + 1], e);
+                        std::process::exit(1);
+                    });
+                    options.max_issues = Some(val);
+                    i += 1;
+                }
+            }
             // === C++ Build Options ===
             "--source-dir" => {
                 if i + 1 < args.len() {
@@ -901,6 +912,7 @@ fn show_help() {
     println!("  --stdout                Output to stdout only, do not write file");
     println!("  --format <format>       Report format: markdown, json, html, raw, raw-json (default: markdown)");
     println!("  --no-short-circuit      Disable success short-circuit (always show full report)");
+    println!("  --max-issues <N>        Limit analysis to the first N issues (default: unlimited)");
     println!();
     println!("Examples:");
     println!("  analyzer cargo \"check\"");

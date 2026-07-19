@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::modules::{CommandConfig, FilterConfig, LimitsConfig, ReportConfig, TechStackConfig, TeeConfig};
+use super::modules::{CommandConfig, FilterConfig, ReportConfig, TechStackConfig, TeeConfig};
 use super::project::ProjectAppConfig;
 
 fn default_version() -> String {
@@ -24,9 +24,7 @@ pub struct AppConfig {
     pub tech_stacks: HashMap<String, TechStackConfig>,
     #[serde(default)]
     pub tee: TeeConfig,
-    #[serde(default)]
-    pub limits: LimitsConfig,
-}
+    }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -37,7 +35,6 @@ impl Default for AppConfig {
             commands: HashMap::new(),
             tech_stacks: HashMap::new(),
             tee: TeeConfig::default(),
-            limits: LimitsConfig::default(),
         }
     }
 }
@@ -65,7 +62,6 @@ impl AppConfig {
                 stacks
             },
             tee: self.tee,
-            limits: self.limits,
         }
     }
 

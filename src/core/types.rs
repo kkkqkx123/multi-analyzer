@@ -211,15 +211,20 @@ impl AnalysisResult {
 
     /// Filter self based on AnalyzeOptions (shared utility for all plugin analyzers).
     ///
-    /// Applies `filter_warnings` and `filter_paths` to produce a filtered result.
+    /// Applies `filter_warnings`, `filter_paths`, and `max_issues` to produce a filtered result.
     /// This replaces the identical `filter_issues()` methods previously duplicated
     /// across all 10 plugin analyzers.
     pub fn filter_by_options(self, options: &AnalyzeOptions) -> Self {
-        if !options.filter_warnings && options.filter_paths.is_empty() {
+        let needs_filtering = options.filter_warnings
+            || !options.filter_paths.is_empty()
+            || options.max_issues.is_some();
+
+        if !needs_filtering {
             return self;
         }
 
         let mut filtered = AnalysisResult::new();
+        let max_issues = options.max_issues.unwrap_or(usize::MAX);
 
         for (file_path, issues) in self.issues_by_file {
             if !options.filter_paths.is_empty() {
@@ -233,6 +238,10 @@ impl AnalysisResult {
             }
 
             for issue in issues {
+                if filtered.total_issues >= max_issues {
+                    return filtered;
+                }
+
                 if options.filter_warnings && matches!(issue.level, IssueLevel::Warning) {
                     continue;
                 }
@@ -559,6 +568,11 @@ pub struct AnalyzeOptions {
     /// Enable success short-circuit: when no issues found, output a single-line confirmation
     pub success_short_circuit: bool,
 
+    // === Result Limits ===
+    /// Maximum number of issues to keep in the analysis result.
+    /// 0 or None = unlimited. Applied after all filters.
+    pub max_issues: Option<usize>,
+
     // === Cargo Workspace Support ===
     /// --workspace
     pub workspace: bool,
@@ -597,10 +611,7 @@ pub struct AnalyzeOptions {
     /// --no-default-features
     pub no_default_features: bool,
 
-    // === Limits (from config) ===
-    /// Limits for grep, status, passthrough, etc.
-    pub limits: crate::config::modules::LimitsConfig,
-}
+    }
 
 impl AnalyzeOptions {
     /// Seed AnalyzeOptions from configuration file.
@@ -626,7 +637,6 @@ impl AnalyzeOptions {
             noise_patterns: config.filter.noise_patterns.clone(),
             keep_patterns: config.filter.keep_patterns.clone(),
             success_short_circuit: config.report.success_short_circuit,
-            limits: config.limits.clone(),
             ..AnalyzeOptions::default()
         }
     }
