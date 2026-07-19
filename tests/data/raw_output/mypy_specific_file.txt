@@ -1,21 +1,21 @@
-src\main.py:14:18: error: Unsupported operand types for + ("int" and "str")  [operator]
-src\main.py:26:1: error: Function is missing a type annotation  [no-untyped-def]
-src\main.py:40:16: error: Argument 1 to "len" has incompatible type "Optional[str]"; expected "Sized"  [arg-type]
-src\main.py:54:5: error: Function is missing a type annotation  [no-untyped-def]
-src\main.py:62:5: error: Function is missing a return type annotation  [no-untyped-def]
-src\main.py:62:5: note: Use "-> None" if function does not return a value
-src\main.py:90:1: error: Function is missing a return type annotation  [no-untyped-def]
-src\main.py:90:1: note: Use "-> None" if function does not return a value
-src\main.py:93:17: error: Argument 1 to "add_numbers" has incompatible type "str"; expected "int"  [arg-type]
-src\main.py:96:14: error: Incompatible types in assignment (expression has type "int", variable has type "str")  [assignment]
-src\main.py:99:11: error: Name "undefined_variable" is not defined  [name-defined]
-src\utils.py:9:5: error: Returning Any from function declared to return "dict[Any, Any]"  [no-any-return]
-src\utils.py:41:1: error: Function is missing a type annotation  [no-untyped-def]
-src\utils.py:70:5: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
-src\utils.py:71:9: error: Returning Any from function declared to return "str"  [no-any-return]
-src\utils.py:87:5: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
-src\utils.py:92:1: error: Function is missing a return type annotation  [no-untyped-def]
-src\utils.py:96:20: error: Argument 1 to "append" of "list" has incompatible type "str"; expected "int"  [arg-type]
-src\utils.py:100:14: error: Unsupported operand types for + ("None" and "int")  [operator]
-src\utils.py:100:14: note: Left operand is of type "Optional[int]"
+src/main.py:14:18: error: Unsupported operand types for + ("int" and "str")  [operator]
+src/main.py:26:1: error: Function is missing a type annotation  [no-untyped-def]
+src/main.py:40:16: error: Argument 1 to "len" has incompatible type "str | None"; expected "Sized"  [arg-type]
+src/main.py:54:5: error: Function is missing a type annotation  [no-untyped-def]
+src/main.py:62:5: error: Function is missing a return type annotation  [no-untyped-def]
+src/main.py:62:5: note: Use "-> None" if function does not return a value
+src/main.py:90:1: error: Function is missing a return type annotation  [no-untyped-def]
+src/main.py:90:1: note: Use "-> None" if function does not return a value
+src/main.py:93:17: error: Argument 1 to "add_numbers" has incompatible type "str"; expected "int"  [arg-type]
+src/main.py:96:14: error: Incompatible types in assignment (expression has type "int", variable has type "str")  [assignment]
+src/main.py:99:11: error: Name "undefined_variable" is not defined  [name-defined]
+src/utils.py:9:5: error: Returning Any from function declared to return "dict[Any, Any]"  [no-any-return]
+src/utils.py:41:1: error: Function is missing a type annotation  [no-untyped-def]
+src/utils.py:70:5: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
+src/utils.py:71:9: error: Returning Any from function declared to return "str"  [no-any-return]
+src/utils.py:87:5: error: Function is missing a type annotation for one or more parameters  [no-untyped-def]
+src/utils.py:92:1: error: Function is missing a return type annotation  [no-untyped-def]
+src/utils.py:96:20: error: Argument 1 to "append" of "list" has incompatible type "str"; expected "int"  [arg-type]
+src/utils.py:100:14: error: Unsupported operand types for + ("None" and "int")  [operator]
+src/utils.py:100:14: note: Left operand is of type "int | None"
 Found 17 errors in 2 files (checked 1 source file)

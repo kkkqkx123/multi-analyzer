@@ -122,3 +122,72 @@ impl Reporter for JsonReporter {
         Ok(json)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::{Issue, IssueLevel, Location};
+    use crate::core::reporter::ReportOptions;
+
+    fn sample_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "type mismatch",
+            Location::new("src/main.rs").with_line(10).with_column(5),
+        ));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "unused variable",
+            Location::new("src/lib.rs").with_line(20),
+        ));
+        r
+    }
+
+    #[test]
+    fn test_json_generate_empty() {
+        let reporter = JsonReporter::new();
+        let result = AnalysisResult::new();
+        let report = reporter.generate(&result).unwrap();
+        assert!(report.contains("\"metadata\""));
+        assert!(report.contains("\"total\": 0"));
+        assert!(report.contains("\"items\": ["));
+    }
+
+    #[test]
+    fn test_json_generate_with_issues() {
+        let reporter = JsonReporter::new();
+        let report = reporter.generate(&sample_result()).unwrap();
+        assert!(report.contains("\"total\": 2"));
+        assert!(report.contains("\"error\": 1"));
+        assert!(report.contains("\"warning\": 1"));
+        assert!(report.contains("type mismatch"));
+        assert!(report.contains("unused variable"));
+        assert!(report.contains("src/main.rs"));
+        assert!(report.contains("src/lib.rs"));
+    }
+
+    #[test]
+    fn test_json_generate_valid_json() {
+        let reporter = JsonReporter::new();
+        let report = reporter.generate(&sample_result()).unwrap();
+        // Verify it's valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&report).unwrap();
+        assert_eq!(parsed["metadata"]["total"], 2);
+        assert_eq!(parsed["summary_by_level"]["error"], 1);
+        assert_eq!(parsed["items"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_json_short_circuit() {
+        let reporter = JsonReporter::new();
+        let empty = AnalysisResult::new();
+        let opts = ReportOptions {
+            success_short_circuit: true,
+            tech_stack: Some("cargo check".to_string()),
+            ..Default::default()
+        };
+        let report = reporter.generate_with_options(&empty, opts).unwrap();
+        assert_eq!(report, "cargo check: no issues found");
+    }
+}

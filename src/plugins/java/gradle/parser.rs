@@ -350,4 +350,62 @@ mod tests {
         assert_eq!(issue.location.file_path, "/path/to/File.kt");
         assert_eq!(issue.location.line_number, Some(15));
     }
+
+    #[test]
+    fn test_parse_gradle_issue_line_no_match() {
+        let parser = GradleParser::new();
+        assert!(parser.parse_gradle_issue_line("some random log").is_none());
+        assert!(parser.parse_gradle_issue_line("BUILD SUCCESSFUL").is_none());
+    }
+
+    #[test]
+    fn test_parse_via_trait_empty() {
+        let parser = GradleParser::new();
+        let result = parser.parse("");
+        assert!(result.is_full());
+        assert!(result.data().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_via_trait_with_issues() {
+        let parser = GradleParser::new();
+        let output = "/src/Main.java:10: error: cannot find symbol\n\
+                      /src/Util.java:20: warning: unchecked conversion";
+        let result = parser.parse(output);
+        assert!(result.is_full());
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].level, IssueLevel::Error);
+        assert_eq!(issues[1].level, IssueLevel::Warning);
+    }
+
+    #[test]
+    fn test_parse_file_location() {
+        let parser = GradleParser::new();
+        let (file, line, _level, msg) = parser.parse_file_location("/path/to/File.java:10: error: cannot find symbol").unwrap();
+        assert_eq!(file, "/path/to/File.java");
+        assert_eq!(line, 10);
+        assert!(msg.contains("cannot find symbol"));
+    }
+
+    #[test]
+    fn test_parse_file_location_no_match() {
+        let parser = GradleParser::new();
+        assert!(parser.parse_file_location("BUILD SUCCESSFUL in 1s").is_none());
+    }
+
+    #[test]
+    fn test_parse_test_output() {
+        let parser = GradleParser::new();
+        let output = "\
+com.example.TestSuite > testMethod > FAILED
+    org.junit.ComparisonFailure: expected:<X> but was:<Y>
+com.example.TestSuite > testOtherMethod > FAILED
+    java.lang.NullPointerException
+PASSED: 3, FAILED: 2, SKIPPED: 0";
+        let test_result = parser.parse_test_output(output);
+        assert_eq!(test_result.failed_tests.len(), 2);
+        assert!(test_result.failed_tests[0].name.contains("testMethod"));
+        assert!(test_result.failed_tests[1].name.contains("testOtherMethod"));
+    }
 }

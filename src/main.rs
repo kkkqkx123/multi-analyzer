@@ -7,6 +7,7 @@
 //!   analyzer npm "run typecheck"
 //!   analyzer pnpm "exec tsc --noEmit"
 
+use std::collections::HashSet;
 use std::env;
 use std::path::Path;
 
@@ -18,6 +19,60 @@ mod plugins;
 use core::{
     AnalysisResult, AnalyzeOptions, ReporterFactory, SubCommand, TechStack, TestOptions, Verbosity,
 };
+
+/// Known analyzer flags that can appear after the command in `analyzer run` mode.
+/// Any argument matching these flags is treated as an analyzer option rather than
+/// part of the command to execute.
+fn is_known_analyzer_flag(arg: &str) -> bool {
+    let known_flags: HashSet<&str> = [
+        "--help",
+        "-h",
+        "--version",
+        "-v",
+        "--filter-warnings",
+        "--verbose",
+        "--quiet",
+        "-q",
+        "--stdout",
+        "--filter-paths",
+        "--output",
+        "-o",
+        "--format",
+        "--workspace",
+        "--package",
+        "-p",
+        "--exclude",
+        "--lib",
+        "--bin",
+        "--bins",
+        "--test",
+        "--tests",
+        "--example",
+        "--examples",
+        "--bench",
+        "--benches",
+        "--all-targets",
+        "--features",
+        "--all-features",
+        "--no-default-features",
+        "--no-short-circuit",
+        "--max-issues",
+        "--source-dir",
+        "--build-dir",
+        "--cmake-generator",
+        "--target",
+        "--target-files",
+        "-I",
+        "--include-path",
+        "-D",
+        "--define",
+        "--cpp-std",
+    ]
+    .into_iter()
+    .collect();
+
+    known_flags.contains(arg)
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -65,11 +120,32 @@ fn handle_rewrite(args: &[String]) {
     if raw_cmd.trim().is_empty() {
         eprintln!("Error: no command provided for rewrite");
         eprintln!("Usage: analyzer rewrite <raw_shell_command>");
+        eprintln!();
+        eprintln!("The <raw_shell_command> must be a build tool command (e.g. \"cargo check\", \"npm run lint\").");
+        eprintln!("Shell builtins like `cd`, `ls`, `echo` are not supported.");
         std::process::exit(1);
     }
+
+    // Split compound commands (&&, ||, ;, |, &) and only rewrite the first segment
+    let segments = discover::split_on_operators(raw_cmd.trim());
+    let cmd_to_rewrite = match segments.len() {
+        0 => {
+            eprintln!("Error: no command provided for rewrite");
+            std::process::exit(1);
+        }
+        1 => segments[0].clone(),
+        n => {
+            eprintln!(
+                "Note: Compound command detected ({} segments). Only the first segment will be rewritten.",
+                n
+            );
+            segments[0].clone()
+        }
+    };
+
     // Load config to resolve command aliases
     let config = config::ConfigLoader::new().load();
-    match discover::rewrite_command_with_config(&raw_cmd, &config.commands) {
+    match discover::rewrite_command_with_config(&cmd_to_rewrite, &config.commands) {
         Some((tech_stack, subcommand, extra_args)) => {
             print!("analyzer {} \"{}\"", tech_stack.as_str(), subcommand);
             for arg in &extra_args {
@@ -79,6 +155,10 @@ fn handle_rewrite(args: &[String]) {
             std::process::exit(0);
         }
         None => {
+            eprintln!("Error: unable to rewrite '{}'", cmd_to_rewrite);
+            eprintln!("The command must be a supported build tool command.");
+            eprintln!("Try running 'analyzer --help' for a list of supported tech stacks and commands.");
+            eprintln!("Alternatively, use 'analyzer run \"{}\"' to run the command directly.", cmd_to_rewrite);
             std::process::exit(1);
         }
     }
@@ -95,12 +175,7 @@ fn handle_run(args: &[String]) {
     let mut flag_start = args.len();
 
     for (i, arg) in args.iter().enumerate().skip(2) {
-        if (arg.starts_with("--") && arg.len() > 2)
-            || (arg.starts_with('-')
-                && arg.len() == 2
-                && arg.as_bytes()[1].is_ascii_alphabetic()
-                && arg != "--")
-        {
+        if is_known_analyzer_flag(arg) {
             flag_start = i;
             break;
         }
@@ -429,19 +504,23 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
     }
 
     // Print supported commands for this analyzer
-    println!(
-        "Supported commands: {}",
-        analyzer.supported_commands().join(", ")
-    );
+    if !options.verbosity.is_minimal() {
+        println!(
+            "Supported commands: {}",
+            analyzer.supported_commands().join(", ")
+        );
+    }
 
     // Check if this is a test command
     let is_test_command = is_test_subcommand(&options.subcommand);
 
     // Print subcommand category if available
     if let Some(ref cmd) = options.subcommand {
-        println!("Command category: {:?}", cmd.category());
-        if cmd.is_custom() {
-            println!("Using custom command: {}", cmd.as_str());
+        if !options.verbosity.is_minimal() {
+            println!("Command category: {:?}", cmd.category());
+            if cmd.is_custom() {
+                println!("Using custom command: {}", cmd.as_str());
+            }
         }
     }
 
@@ -449,7 +528,9 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
         // Resolve test framework from config
         let ts_str = tech_stack.as_str();
         if let Some(framework) = config.test_framework_for(ts_str) {
-            println!("Test framework: {}", framework);
+            if !options.verbosity.is_minimal() {
+                println!("Test framework: {}", framework);
+            }
         }
         // Run test analysis
         run_test_analysis(analyzer, &options);
@@ -459,7 +540,7 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
     }
 
     let tracking_summary = core::tracking::stats().summary();
-    if !tracking_summary.contains("0 total") {
+    if !tracking_summary.contains("0 total") && !options.verbosity.is_minimal() {
         println!("\n{}", tracking_summary);
     }
 }
@@ -478,8 +559,15 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
                 std::process::exit(0);
             }
             "--version" | "-v" => {
-                println!("analyzer 0.2.0");
-                std::process::exit(0);
+                if tech_stack_str.is_empty() {
+                    println!("analyzer 0.2.0");
+                    std::process::exit(0);
+                }
+                // If -v appears after a tech stack, treat it as a command argument
+                // (e.g. "analyzer pytest -v" should pass -v to pytest, not --version)
+                if command_str.is_empty() {
+                    command_str = args[i].clone();
+                }
             }
             "--filter-warnings" => {
                 options.filter_warnings = true;
@@ -654,6 +742,10 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
                         // Collect the full command string
                         command_str = arg.to_string();
                     }
+                } else if !tech_stack_str.is_empty() && command_str.is_empty() {
+                    // Unknown flag after tech stack → treat as command
+                    // This handles: analyzer mypy "--strict ."
+                    command_str = arg.to_string();
                 }
             }
         }
@@ -736,23 +828,29 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
         .as_ref()
         .map(|s| s.as_str())
         .unwrap_or("default");
-    println!(
-        "Analyzing project with {} {}...",
-        analyzer.name(),
-        subcommand_name
-    );
+    if !options.verbosity.is_minimal() {
+        println!(
+            "Analyzing project with {} {}...",
+            analyzer.name(),
+            subcommand_name
+        );
 
-    // Use the parser method to demonstrate it's being used
-    let _parser = analyzer.parser();
-    println!("Using parser: {}", std::any::type_name_of_val(_parser));
+        // Use the parser method to demonstrate it's being used
+        let _parser = analyzer.parser();
+        println!("Using parser: {}", std::any::type_name_of_val(_parser));
+    } else {
+        let _parser = analyzer.parser();
+    }
 
     // The OutputParser trait is implemented by various parsers
     // and provides line-by-line parsing capabilities via template method pattern
 
     match analyzer.analyze(options) {
         Ok(result) => {
-            println!("\nAnalysis complete!");
-            println!("Total issues: {}", result.total_issues);
+            if !options.verbosity.is_minimal() {
+                println!("\nAnalysis complete!");
+                println!("Total issues: {}", result.total_issues);
+            }
 
             // Generating reports
             let reporter = ReporterFactory::create(options.report_format);
@@ -783,7 +881,7 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
             }
 
             // Print summary
-            print_summary(&result);
+            print_summary(&result, options.verbosity);
         }
         Err(e) => {
             eprintln!("Analysis failed: {}", e);
@@ -982,9 +1080,12 @@ fn show_help() {
     println!("  --cpp-std <STANDARD>    C++ standard (e.g. c++17, c++20)");
 }
 
-fn print_summary(result: &AnalysisResult) {
-    println!("\n=== Summary ===");
-    println!("Total issues: {}", result.total_issues);
+fn print_summary(result: &AnalysisResult, verbosity: core::Verbosity) {
+    println!("\nTotal issues: {}", result.total_issues);
+
+    if verbosity.is_minimal() {
+        return;
+    }
 
     // Use error_count() and warning_count() methods
     println!("  Errors: {}", result.error_count());
@@ -1016,5 +1117,226 @@ fn print_summary(result: &AnalysisResult) {
         for error in errors.iter().take(3) {
             println!("  - [{}] {}", error.location.file_path, error.message);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── is_known_analyzer_flag ──────────────────────────────────────
+
+    #[test]
+    fn test_is_known_analyzer_flag_help() {
+        assert!(is_known_analyzer_flag("--help"));
+        assert!(is_known_analyzer_flag("-h"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_version() {
+        assert!(is_known_analyzer_flag("--version"));
+        assert!(is_known_analyzer_flag("-v"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_filter_warnings() {
+        assert!(is_known_analyzer_flag("--filter-warnings"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_verbose() {
+        assert!(is_known_analyzer_flag("--verbose"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_quiet() {
+        assert!(is_known_analyzer_flag("--quiet"));
+        assert!(is_known_analyzer_flag("-q"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_stdout() {
+        assert!(is_known_analyzer_flag("--stdout"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_filter_paths() {
+        assert!(is_known_analyzer_flag("--filter-paths"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_output() {
+        assert!(is_known_analyzer_flag("--output"));
+        assert!(is_known_analyzer_flag("-o"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_format() {
+        assert!(is_known_analyzer_flag("--format"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_workspace() {
+        assert!(is_known_analyzer_flag("--workspace"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_package() {
+        assert!(is_known_analyzer_flag("--package"));
+        assert!(is_known_analyzer_flag("-p"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_exclude() {
+        assert!(is_known_analyzer_flag("--exclude"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_target_options() {
+        assert!(is_known_analyzer_flag("--lib"));
+        assert!(is_known_analyzer_flag("--bin"));
+        assert!(is_known_analyzer_flag("--bins"));
+        assert!(is_known_analyzer_flag("--test"));
+        assert!(is_known_analyzer_flag("--tests"));
+        assert!(is_known_analyzer_flag("--example"));
+        assert!(is_known_analyzer_flag("--examples"));
+        assert!(is_known_analyzer_flag("--bench"));
+        assert!(is_known_analyzer_flag("--benches"));
+        assert!(is_known_analyzer_flag("--all-targets"));
+        assert!(is_known_analyzer_flag("--features"));
+        assert!(is_known_analyzer_flag("--all-features"));
+        assert!(is_known_analyzer_flag("--no-default-features"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_cpp_options() {
+        assert!(is_known_analyzer_flag("--source-dir"));
+        assert!(is_known_analyzer_flag("--build-dir"));
+        assert!(is_known_analyzer_flag("--cmake-generator"));
+        assert!(is_known_analyzer_flag("--target"));
+        assert!(is_known_analyzer_flag("--target-files"));
+        assert!(is_known_analyzer_flag("-I"));
+        assert!(is_known_analyzer_flag("--include-path"));
+        assert!(is_known_analyzer_flag("-D"));
+        assert!(is_known_analyzer_flag("--define"));
+        assert!(is_known_analyzer_flag("--cpp-std"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_other_known() {
+        assert!(is_known_analyzer_flag("--no-short-circuit"));
+        assert!(is_known_analyzer_flag("--max-issues"));
+    }
+
+    #[test]
+    fn test_is_known_analyzer_flag_not_known() {
+        assert!(!is_known_analyzer_flag("cargo"));
+        assert!(!is_known_analyzer_flag("check"));
+        assert!(!is_known_analyzer_flag("src/main.rs"));
+        assert!(!is_known_analyzer_flag("--unknown-flag"));
+    }
+
+    // ── is_test_subcommand ──────────────────────────────────────────
+
+    #[test]
+    fn test_is_test_subcommand_test() {
+        assert!(is_test_subcommand(&Some(SubCommand::new("test"))));
+    }
+
+    #[test]
+    fn test_is_test_subcommand_test_with_args() {
+        assert!(is_test_subcommand(&Some(SubCommand::new("test --features ci"))));
+    }
+
+    #[test]
+    fn test_is_test_subcommand_not_test() {
+        assert!(!is_test_subcommand(&Some(SubCommand::new("check"))));
+        assert!(!is_test_subcommand(&Some(SubCommand::new("build"))));
+    }
+
+    #[test]
+    fn test_is_test_subcommand_none() {
+        assert!(!is_test_subcommand(&None));
+    }
+
+    // ── parse_options_from_args ─────────────────────────────────────
+
+    #[test]
+    fn test_parse_options_from_args_filter_warnings() {
+        let args = vec!["--filter-warnings".to_string(), "cargo".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert!(opts.filter_warnings);
+    }
+
+    #[test]
+    fn test_parse_options_from_args_verbose() {
+        let args = vec!["--verbose".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert_eq!(opts.verbosity, Verbosity::Verbose);
+    }
+
+    #[test]
+    fn test_parse_options_from_args_quiet() {
+        let args = vec!["--quiet".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert_eq!(opts.verbosity, Verbosity::Minimal);
+    }
+
+    #[test]
+    fn test_parse_options_from_args_stdout() {
+        let args = vec!["--stdout".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert!(opts.stdout_only);
+    }
+
+    #[test]
+    fn test_parse_options_from_args_filter_paths() {
+        let args = vec!["--filter-paths".to_string(), "src,tests".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert_eq!(opts.filter_paths.len(), 2);
+        assert!(opts.filter_paths.contains(&"src".to_string()));
+        assert!(opts.filter_paths.contains(&"tests".to_string()));
+    }
+
+    #[test]
+    fn test_parse_options_from_args_filter_paths_missing_arg() {
+        // No next arg for --filter-paths → should not panic, just skip
+        let args = vec!["--filter-paths".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert!(opts.filter_paths.is_empty());
+    }
+
+    #[test]
+    fn test_parse_options_from_args_max_issues() {
+        let args = vec!["--max-issues".to_string(), "10".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        parse_options_from_args(&args, 0, &mut opts);
+        assert_eq!(opts.max_issues, Some(10));
+    }
+
+    #[test]
+    fn test_parse_options_from_args_no_short_circuit() {
+        let args = vec!["--no-short-circuit".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        opts.success_short_circuit = true;
+        parse_options_from_args(&args, 0, &mut opts);
+        assert!(!opts.success_short_circuit);
+    }
+
+    #[test]
+    fn test_parse_options_from_args_unknown_flag() {
+        let args = vec!["--unknown-flag".to_string()];
+        let mut opts = AnalyzeOptions::default();
+        // Should not panic, just skip unknown flags
+        parse_options_from_args(&args, 0, &mut opts);
+        // Options should remain default
+        assert!(!opts.filter_warnings);
+        assert_eq!(opts.verbosity, Verbosity::Normal);
     }
 }

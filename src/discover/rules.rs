@@ -86,7 +86,7 @@ pub const RUST_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^cargo\s+nextest\s+(run|list|archive)\b",
         tech_stack: TechStack::Cargo,
-        subcommand_template: "nextest {2}",
+        subcommand_template: "nextest {1}",
         prefixes: &["cargo"],
         category: "Rust",
     },
@@ -105,7 +105,7 @@ pub const NODE_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^pnpm\s+(run\s+)?(lint|typecheck|audit|test|exec\s+tsc)",
         tech_stack: TechStack::Pnpm,
-        subcommand_template: "{0}",
+        subcommand_template: "{2}",
         prefixes: &["pnpm"],
         category: "Node.js",
     },
@@ -122,16 +122,16 @@ pub const NODE_RULES: &[CommandRule] = &[
 #[allow(dead_code)]
 pub const PYTHON_RULES: &[CommandRule] = &[
     CommandRule {
-        pattern: r"^mypy\b",
+        pattern: r"^mypy\b\s*(.*)$",
         tech_stack: TechStack::Mypy,
-        subcommand_template: "mypy",
+        subcommand_template: "{1}",
         prefixes: &["mypy"],
         category: "Python",
     },
     CommandRule {
-        pattern: r"^pytest\b",
+        pattern: r"^pytest\b\s*(.*)$",
         tech_stack: TechStack::Pytest,
-        subcommand_template: "pytest",
+        subcommand_template: "{1}",
         prefixes: &["pytest"],
         category: "Python",
     },
@@ -143,9 +143,9 @@ pub const PYTHON_RULES: &[CommandRule] = &[
         category: "Python",
     },
     CommandRule {
-        pattern: r"^black\b",
+        pattern: r"^black\b\s*(.*)$",
         tech_stack: TechStack::Black,
-        subcommand_template: "black",
+        subcommand_template: "{1}",
         prefixes: &["black"],
         category: "Python",
     },
@@ -212,16 +212,16 @@ pub const DOTNET_RULES: &[CommandRule] = &[
 #[allow(dead_code)]
 pub const RUBY_RULES: &[CommandRule] = &[
     CommandRule {
-        pattern: r"^rubocop\b",
+        pattern: r"^rubocop\b\s*(.*)$",
         tech_stack: TechStack::Rubocop,
-        subcommand_template: "rubocop",
+        subcommand_template: "{1}",
         prefixes: &["rubocop"],
         category: "Ruby",
     },
     CommandRule {
-        pattern: r"^(bundle\s+exec\s+)?rspec\b",
+        pattern: r"^(bundle\s+exec\s+)?rspec\b\s*(.*)$",
         tech_stack: TechStack::Rspec,
-        subcommand_template: "rspec",
+        subcommand_template: "{2}",
         prefixes: &["rspec", "bundle"],
         category: "Ruby",
     },
@@ -245,7 +245,7 @@ pub const CPP_RULES: &[CommandRule] = &[
         category: "C++",
     },
     CommandRule {
-        pattern: r"^(clang|clang\+\+)\s+.*-c\b",
+        pattern: r"^(clang|clang\+\+)\s+.*(-c\b|-fsyntax-only\b)",
         tech_stack: TechStack::Clang,
         subcommand_template: "compile",
         prefixes: &["clang", "clang++"],
@@ -271,7 +271,7 @@ pub const CPP_RULES: &[CommandRule] = &[
 #[allow(dead_code)]
 pub const FALLBACK_RULES: &[CommandRule] = &[
     CommandRule {
-        pattern: r"^npm\s+(\S+)",
+        pattern: r"^npm\s+(?:run\s+)?(\S+)",
         tech_stack: TechStack::Npm,
         subcommand_template: "run {1}",
         prefixes: &["npm"],
@@ -302,7 +302,7 @@ pub const RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^cargo\s+nextest\s+(run|list|archive)\b",
         tech_stack: TechStack::Cargo,
-        subcommand_template: "nextest {2}",
+        subcommand_template: "nextest {1}",
         prefixes: &["cargo"],
         category: "Rust",
     },
@@ -317,7 +317,7 @@ pub const RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^pnpm\s+(run\s+)?(lint|typecheck|audit|test|exec\s+tsc)",
         tech_stack: TechStack::Pnpm,
-        subcommand_template: "{0}",
+        subcommand_template: "{2}",
         prefixes: &["pnpm"],
         category: "Node.js",
     },
@@ -330,16 +330,16 @@ pub const RULES: &[CommandRule] = &[
     },
     // ============ Python ============
     CommandRule {
-        pattern: r"^mypy\b",
+        pattern: r"^mypy\b\s*(.*)$",
         tech_stack: TechStack::Mypy,
-        subcommand_template: "mypy",
+        subcommand_template: "{1}",
         prefixes: &["mypy"],
         category: "Python",
     },
     CommandRule {
-        pattern: r"^pytest\b",
+        pattern: r"^pytest\b\s*(.*)$",
         tech_stack: TechStack::Pytest,
-        subcommand_template: "pytest",
+        subcommand_template: "{1}",
         prefixes: &["pytest"],
         category: "Python",
     },
@@ -351,9 +351,9 @@ pub const RULES: &[CommandRule] = &[
         category: "Python",
     },
     CommandRule {
-        pattern: r"^black\b",
+        pattern: r"^black\b\s*(.*)$",
         tech_stack: TechStack::Black,
-        subcommand_template: "black",
+        subcommand_template: "{1}",
         prefixes: &["black"],
         category: "Python",
     },
@@ -404,16 +404,16 @@ pub const RULES: &[CommandRule] = &[
     },
     // ============ Ruby ============
     CommandRule {
-        pattern: r"^rubocop\b",
+        pattern: r"^rubocop\b\s*(.*)$",
         tech_stack: TechStack::Rubocop,
-        subcommand_template: "rubocop",
+        subcommand_template: "{1}",
         prefixes: &["rubocop"],
         category: "Ruby",
     },
     CommandRule {
-        pattern: r"^(bundle\s+exec\s+)?rspec\b",
+        pattern: r"^(bundle\s+exec\s+)?rspec\b\s*(.*)$",
         tech_stack: TechStack::Rspec,
-        subcommand_template: "rspec",
+        subcommand_template: "{2}",
         prefixes: &["rspec", "bundle"],
         category: "Ruby",
     },
@@ -433,7 +433,7 @@ pub const RULES: &[CommandRule] = &[
         category: "C++",
     },
     CommandRule {
-        pattern: r"^(clang|clang\+\+)\s+.*-c\b",
+        pattern: r"^(clang|clang\+\+)\s+.*(-c\b|-fsyntax-only\b)",
         tech_stack: TechStack::Clang,
         subcommand_template: "compile",
         prefixes: &["clang", "clang++"],
@@ -454,13 +454,13 @@ pub const RULES: &[CommandRule] = &[
         category: "C++",
     },
     // ============ Broad fallback patterns (lower priority, after specific rules) ============
-    // npm: any subcommand not covered above
+    // npm: any subcommand not covered above (handle `npm run <script>` and `npm <cmd>`)
     CommandRule {
-        pattern: r"^npm\s+(\S+)",
+        pattern: r"^npm\s+(?:run\s+)?(\S+)",
         tech_stack: TechStack::Npm,
         subcommand_template: "run {1}",
         prefixes: &["npm"],
-        category: "Node.js",
+        category: "Fallback",
     },
     // dotnet: any subcommand not covered above
     CommandRule {
@@ -468,7 +468,7 @@ pub const RULES: &[CommandRule] = &[
         tech_stack: TechStack::Dotnet,
         subcommand_template: "{1}",
         prefixes: &["dotnet"],
-        category: ".NET",
+        category: "Fallback",
     },
 ];
 

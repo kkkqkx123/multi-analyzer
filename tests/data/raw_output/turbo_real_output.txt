@@ -2,38 +2,4 @@
 > sample-turbo-project@1.0.0 lint
 > turbo run lint
 
-
-   • Packages in scope: web
-   • Running lint in 1 packages
-   • Remote caching disabled
-
-web:lint: cache miss, executing 87d6e5df50e3a3b7
-web:lint: 
-web:lint: > web@1.0.0 lint /workspace/multi-analyzer/tests/data/fixtures/sample_turbo_project/apps/web
-web:lint: > eslint src/
-web:lint: 
-web:lint: 
-web:lint: /workspace/multi-analyzer/tests/data/fixtures/sample_turbo_project/apps/web/src/index.ts
-web:lint:    4:7   error    'unusedVariable' is assigned a value but never used  @typescript-eslint/no-unused-vars
-web:lint:    7:30  error    'unusedParam' is defined but never used              @typescript-eslint/no-unused-vars
-web:lint:   12:28  warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
-web:lint:   12:34  warning  Unexpected any. Specify a different type             @typescript-eslint/no-explicit-any
-web:lint:   17:10  error    'unusedFunction' is defined but never used           @typescript-eslint/no-unused-vars
-web:lint: 
-web:lint: ✖ 5 problems (3 errors, 2 warnings)
-web:lint: 
-web:lint:  ELIFECYCLE  Command failed with exit code 1.
-
- Tasks:    0 successful, 1 total
-Cached:    0 cached, 1 total
-  Time:    1.496s 
-Failed:    web#lint
-
-• turbo 2.9.18
- WARNING  An issue occurred while attempting to parse /workspace/multi-analyzer/tests/data/fixtures/sample_turbo_project/pnpm-lock.yaml. Turborepo will still function, but some features may not be available:
-   x Could not resolve workspaces.
-  `-> Lockfile not found at /workspace/multi-analyzer/tests/data/fixtures/
-      sample_turbo_project/pnpm-lock.yaml
-
- ERROR  web#lint: command (/workspace/multi-analyzer/tests/data/fixtures/sample_turbo_project/apps/web) /usr/local/bin/pnpm run lint exited (1)
- ERROR  run failed: command  exited (1)
+sh: 1: turbo: not found

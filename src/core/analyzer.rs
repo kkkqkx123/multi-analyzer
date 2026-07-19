@@ -137,3 +137,144 @@ impl Default for PluginRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::parser::OutputParser;
+    use crate::core::types::Issue;
+    use crate::core::parser::ParseResult;
+    use std::any::Any;
+
+    /// A mock analyzer for testing PluginRegistry
+    struct MockAnalyzer {
+        stack: TechStack,
+        commands: Vec<&'static str>,
+    }
+
+    impl MockAnalyzer {
+        fn new(stack: TechStack) -> Self {
+            let commands = match stack {
+                TechStack::Cargo => vec!["check", "build", "test"],
+                TechStack::Maven => vec!["compile", "test"],
+                _ => vec!["run"],
+            };
+            Self { stack, commands }
+        }
+    }
+
+    impl BuildAnalyzer for MockAnalyzer {
+        fn tech_stack(&self) -> TechStack {
+            self.stack
+        }
+
+        fn supported_commands(&self) -> Vec<&str> {
+            self.commands.clone()
+        }
+
+        fn analyze(&self, _options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
+            Ok(AnalysisResult::new())
+        }
+
+        fn parser(&self) -> &dyn OutputParser {
+            panic!("not used in tests")
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    #[test]
+    fn test_registry_new_empty() {
+        let registry = PluginRegistry::new();
+        assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn test_registry_register_and_get() {
+        let mut registry = PluginRegistry::new();
+        registry.register(Box::new(MockAnalyzer::new(TechStack::Cargo)));
+        let analyzer = registry.get(TechStack::Cargo);
+        assert!(analyzer.is_some());
+        assert_eq!(analyzer.unwrap().tech_stack(), TechStack::Cargo);
+    }
+
+    #[test]
+    fn test_registry_get_nonexistent() {
+        let registry = PluginRegistry::new();
+        assert!(registry.get(TechStack::Cargo).is_none());
+    }
+
+    #[test]
+    fn test_registry_list() {
+        let mut registry = PluginRegistry::new();
+        registry.register(Box::new(MockAnalyzer::new(TechStack::Cargo)));
+        registry.register(Box::new(MockAnalyzer::new(TechStack::Maven)));
+        let names = registry.list();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"cargo"));
+        assert!(names.contains(&"maven"));
+    }
+
+    #[test]
+    fn test_check_applicable_no_file_check_stacks() {
+        let mut registry = PluginRegistry::new();
+        // Stacks without file checks should always return Ok
+        registry.register(Box::new(MockAnalyzer::new(TechStack::Mypy)));
+        registry.register(Box::new(MockAnalyzer::new(TechStack::Pytest)));
+        let result = registry.check_applicable(TechStack::Mypy, std::path::Path::new("/nonexistent"));
+        assert!(result.is_ok());
+        let result = registry.check_applicable(TechStack::Pytest, std::path::Path::new("/nonexistent"));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = PluginRegistry::default();
+        assert!(registry.list().is_empty());
+    }
+
+    // ── AnalyzerError Display ──────────────────────────────────────
+
+    #[test]
+    fn test_analyzer_error_command_failed_display() {
+        let err = AnalyzerError::CommandFailed("command not found".to_string());
+        assert_eq!(err.to_string(), "Command failed: command not found");
+    }
+
+    #[test]
+    fn test_analyzer_error_parse_error_display() {
+        let err = AnalyzerError::ParseError("invalid syntax".to_string());
+        assert_eq!(err.to_string(), "Parse error: invalid syntax");
+    }
+
+    #[test]
+    fn test_analyzer_error_io_error_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = AnalyzerError::IoError(io_err);
+        assert!(err.to_string().contains("IO error:"));
+    }
+
+    #[test]
+    fn test_analyzer_error_not_applicable_display() {
+        let err = AnalyzerError::NotApplicable;
+        assert_eq!(
+            err.to_string(),
+            "Analyzer not applicable for this project"
+        );
+    }
+
+    #[test]
+    fn test_analyzer_error_timeout_display() {
+        let err = AnalyzerError::Timeout(Duration::from_secs(30));
+        assert_eq!(err.to_string(), "Command timed out after 30s");
+    }
+
+    #[test]
+    fn test_analyzer_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let err: AnalyzerError = io_err.into();
+        assert!(matches!(err, AnalyzerError::IoError(_)));
+    }
+}

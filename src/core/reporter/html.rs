@@ -191,3 +191,59 @@ impl Reporter for HtmlReporter {
         Ok(html)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::{Issue, IssueLevel, Location};
+    use crate::core::reporter::ReportOptions;
+
+    fn sample_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "undefined reference to `foo`",
+            Location::new("src/main.rs").with_line(10).with_column(5),
+        ));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "unused variable",
+            Location::new("src/lib.rs").with_line(20),
+        ));
+        r
+    }
+
+    #[test]
+    fn test_html_generate_empty() {
+        let reporter = HtmlReporter::new();
+        let result = AnalysisResult::new();
+        let report = reporter.generate(&result).unwrap();
+        assert!(report.contains("<!DOCTYPE html>"));
+        assert!(report.contains("No issues found"));
+    }
+
+    #[test]
+    fn test_html_generate_with_issues() {
+        let reporter = HtmlReporter::new();
+        let report = reporter.generate(&sample_result()).unwrap();
+        assert!(report.contains("<!DOCTYPE html>"));
+        assert!(report.contains("undefined reference"));
+        assert!(report.contains("unused variable"));
+        assert!(report.contains("src/main.rs"));
+        assert!(report.contains("src/lib.rs"));
+        assert!(report.contains("Analysis Report"));
+    }
+
+    #[test]
+    fn test_html_short_circuit() {
+        let reporter = HtmlReporter::new();
+        let empty = AnalysisResult::new();
+        let opts = ReportOptions {
+            success_short_circuit: true,
+            tech_stack: Some("cargo check".to_string()),
+            ..Default::default()
+        };
+        let report = reporter.generate_with_options(&empty, opts).unwrap();
+        assert_eq!(report, "cargo check: no issues found");
+    }
+}

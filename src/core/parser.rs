@@ -665,3 +665,315 @@ line in block two
         assert_eq!(remaining[0][0], "error: second");
     }
 }
+
+#[cfg(test)]
+mod base_parser_tests {
+    use super::*;
+
+    // ── detect_level ────────────────────────────────────────────────
+
+    #[test]
+    fn test_detect_level_error() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.detect_level("error: something"), Some(IssueLevel::Error));
+        assert_eq!(parser.detect_level("Error: something"), Some(IssueLevel::Error));
+        assert_eq!(parser.detect_level("ERROR: something"), Some(IssueLevel::Error));
+    }
+
+    #[test]
+    fn test_detect_level_warning() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.detect_level("warning: unused"), Some(IssueLevel::Warning));
+        assert_eq!(parser.detect_level("WARNING: unused"), Some(IssueLevel::Warning));
+        assert_eq!(parser.detect_level("warn: something"), Some(IssueLevel::Warning));
+    }
+
+    #[test]
+    fn test_detect_level_info() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.detect_level("info: something"), Some(IssueLevel::Info));
+        assert_eq!(parser.detect_level("note: something"), Some(IssueLevel::Info));
+    }
+
+    #[test]
+    fn test_detect_level_hint() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.detect_level("hint: try this"), Some(IssueLevel::Hint));
+    }
+
+    #[test]
+    fn test_detect_level_none() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.detect_level("just a log line"), None);
+        assert_eq!(parser.detect_level(""), None);
+    }
+
+    // ── extract_error_code ──────────────────────────────────────────
+
+    #[test]
+    fn test_extract_error_code_standard() {
+        let parser = BaseParser::new();
+        assert_eq!(
+            parser.extract_error_code("mismatched types [E0308]"),
+            Some("[E0308]".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_error_code_ts() {
+        let parser = BaseParser::new();
+        assert_eq!(
+            parser.extract_error_code("Type 'X' is not assignable [TS2345]"),
+            Some("[TS2345]".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_error_code_no_brackets() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.extract_error_code("no error code here"), None);
+    }
+
+    #[test]
+    fn test_extract_error_code_empty_text() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.extract_error_code(""), None);
+    }
+
+    #[test]
+    fn test_extract_error_code_invalid_chars() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.extract_error_code("code [a b]"), None);
+    }
+
+    // ── parse_standard_format ───────────────────────────────────────
+
+    #[test]
+    fn test_parse_standard_format_full() {
+        let parser = BaseParser::new();
+        let line = "src/main.rs:10:5: error: mismatched types";
+        let issue = parser.parse_standard_format(line);
+        assert!(issue.is_some());
+        let issue = issue.unwrap();
+        assert_eq!(issue.location.file_path, "src/main.rs");
+        assert_eq!(issue.location.line_number, Some(10));
+        assert_eq!(issue.location.column_number, Some(5));
+        assert_eq!(issue.level, IssueLevel::Error);
+        assert_eq!(issue.message, "mismatched types");
+    }
+
+    #[test]
+    fn test_parse_standard_format_no_col() {
+        let parser = BaseParser::new();
+        let line = "src/main.rs:10: error: broken";
+        let issue = parser.parse_standard_format(line);
+        assert!(issue.is_some());
+        let issue = issue.unwrap();
+        assert_eq!(issue.location.line_number, Some(10));
+        assert!(issue.location.column_number.is_none());
+    }
+
+    #[test]
+    fn test_parse_standard_format_with_code() {
+        let parser = BaseParser::new();
+        let line = "src/main.rs:10:5: error: mismatched types [E0308]";
+        let issue = parser.parse_standard_format(line);
+        assert!(issue.is_some());
+        let issue = issue.unwrap();
+        assert_eq!(issue.code.unwrap(), "[E0308]");
+    }
+
+    #[test]
+    fn test_parse_standard_format_insufficient_parts() {
+        let parser = BaseParser::new();
+        assert!(parser.parse_standard_format("just a string").is_none());
+    }
+
+    #[test]
+    fn test_parse_standard_format_empty() {
+        let parser = BaseParser::new();
+        assert!(parser.parse_standard_format("").is_none());
+    }
+
+    #[test]
+    fn test_parse_standard_format_invalid_line_number() {
+        let parser = BaseParser::new();
+        let line = "file:abc: error: msg";
+        // "abc" can't parse as u32, so it should return None
+        assert!(parser.parse_standard_format(line).is_none());
+    }
+
+    // ── parse_parentheses_format ────────────────────────────────────
+
+    #[test]
+    fn test_parse_parentheses_format_standard() {
+        let parser = BaseParser::new();
+        let line = "src/main.rs(10,5): error: mismatched types";
+        let issue = parser.parse_parentheses_format(line);
+        assert!(issue.is_some());
+        let issue = issue.unwrap();
+        assert_eq!(issue.location.file_path, "src/main.rs");
+        assert_eq!(issue.location.line_number, Some(10));
+        assert_eq!(issue.location.column_number, Some(5));
+        assert_eq!(issue.level, IssueLevel::Error);
+    }
+
+    #[test]
+    fn test_parse_parentheses_format_no_parens() {
+        let parser = BaseParser::new();
+        assert!(parser.parse_parentheses_format("no parens here").is_none());
+    }
+
+    #[test]
+    fn test_parse_parentheses_format_invalid_numbers() {
+        let parser = BaseParser::new();
+        let line = "file(abc,def): error: msg";
+        assert!(parser.parse_parentheses_format(line).is_none());
+    }
+
+    #[test]
+    fn test_parse_parentheses_format_no_level() {
+        let parser = BaseParser::new();
+        let line = "file(1,2): some random message";
+        assert!(parser.parse_parentheses_format(line).is_none());
+    }
+
+    // ── extract_message ─────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_message_no_trailing_rule() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.extract_message("simple message"), "simple message");
+    }
+
+    #[test]
+    fn test_extract_message_with_trailing_rule() {
+        let parser = BaseParser::new();
+        assert_eq!(
+            parser.extract_message("variable name xyz-rule"),
+            "variable name"
+        );
+    }
+
+    #[test]
+    fn test_extract_message_with_trailing_path() {
+        let parser = BaseParser::new();
+        assert_eq!(
+            parser.extract_message("unused import src/main.rs"),
+            "unused import"
+        );
+    }
+
+    #[test]
+    fn test_extract_message_single_word() {
+        let parser = BaseParser::new();
+        assert_eq!(parser.extract_message("hello"), "hello");
+    }
+
+    // ── ParseResult ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_result_is_full() {
+        let r: ParseResult<i32> = ParseResult::Full(42);
+        assert!(r.is_full());
+        assert_eq!(r.tier(), 1);
+    }
+
+    #[test]
+    fn test_parse_result_is_degraded() {
+        let r: ParseResult<i32> = ParseResult::Degraded(42, vec!["warn".to_string()]);
+        assert!(!r.is_full());
+        assert_eq!(r.tier(), 2);
+    }
+
+    #[test]
+    fn test_parse_result_is_passthrough() {
+        let r: ParseResult<i32> = ParseResult::Passthrough("raw".to_string());
+        assert!(!r.is_full());
+        assert_eq!(r.tier(), 3);
+    }
+
+    #[test]
+    fn test_parse_result_data_or_default_full() {
+        let r: ParseResult<i32> = ParseResult::Full(42);
+        assert_eq!(r.data_or_default(-1), 42);
+    }
+
+    #[test]
+    fn test_parse_result_data_or_default_degraded() {
+        let r: ParseResult<i32> = ParseResult::Degraded(42, vec![]);
+        assert_eq!(r.data_or_default(-1), 42);
+    }
+
+    #[test]
+    fn test_parse_result_data_or_default_passthrough() {
+        let r: ParseResult<i32> = ParseResult::Passthrough("raw".to_string());
+        assert_eq!(r.data_or_default(-1), -1);
+    }
+
+    #[test]
+    fn test_parse_result_data_full() {
+        let r: ParseResult<i32> = ParseResult::Full(42);
+        assert_eq!(r.data(), Some(42));
+    }
+
+    #[test]
+    fn test_parse_result_data_passthrough() {
+        let r: ParseResult<i32> = ParseResult::Passthrough("raw".to_string());
+        assert_eq!(r.data(), None);
+    }
+
+    #[test]
+    fn test_parse_result_map() {
+        let r: ParseResult<i32> = ParseResult::Full(42);
+        let mapped = r.map(|x| x * 2);
+        assert_eq!(mapped.data(), Some(84));
+    }
+
+    #[test]
+    fn test_parse_result_map_degraded() {
+        let r: ParseResult<i32> = ParseResult::Degraded(42, vec!["warn".to_string()]);
+        let mapped = r.map(|x| x * 2);
+        assert_eq!(mapped.warnings().len(), 1);
+        assert_eq!(mapped.data_or_default(0), 84);
+    }
+
+    #[test]
+    fn test_parse_result_map_passthrough() {
+        let r: ParseResult<i32> = ParseResult::Passthrough("raw".to_string());
+        let mapped = r.map(|x| x * 2);
+        assert_eq!(mapped.data(), None);
+    }
+
+    #[test]
+    fn test_parse_result_warnings() {
+        let r: ParseResult<i32> = ParseResult::Degraded(42, vec!["line 5 skipped".to_string()]);
+        assert_eq!(r.warnings(), &["line 5 skipped".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_result_warnings_empty_for_full() {
+        let r: ParseResult<i32> = ParseResult::Full(42);
+        assert!(r.warnings().is_empty());
+    }
+
+    #[test]
+    fn test_parse_result_warnings_empty_for_passthrough() {
+        let r: ParseResult<i32> = ParseResult::Passthrough("raw".to_string());
+        assert!(r.warnings().is_empty());
+    }
+
+    #[test]
+    fn test_parse_result_data_or_default_owned() {
+        let r: ParseResult<Vec<i32>> = ParseResult::Full(vec![1, 2, 3]);
+        let data = r.data_or_default_owned();
+        assert_eq!(data, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_parse_result_data_or_default_owned_passthrough() {
+        let r: ParseResult<Vec<i32>> = ParseResult::Passthrough("raw".to_string());
+        let data = r.data_or_default_owned();
+        assert!(data.is_empty());
+    }
+}

@@ -514,3 +514,245 @@ impl MarkdownReporter {
         Ok(report)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::{Issue, IssueLevel, Location, TestSummary, TestStatus, TestCase};
+    use crate::core::Verbosity;
+
+    fn single_error_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "undefined reference to `foo`",
+            Location::new("src/main.rs").with_line(10).with_column(5),
+        ));
+        r
+    }
+
+    fn multi_issue_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "type mismatch", Location::new("src/main.rs").with_line(10)).with_code("E0308"));
+        r.add_issue(Issue::new(IssueLevel::Warning, "unused var", Location::new("src/lib.rs").with_line(20)).with_code("W0001"));
+        r.add_issue(Issue::new(IssueLevel::Info, "consider refactoring", Location::new("src/lib.rs").with_line(25)));
+        r
+    }
+
+    fn security_audit_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "npm audit security vulnerability",
+            Location::new("package.json"),
+        ));
+        r
+    }
+
+    fn type_check_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "type mismatch: expected String",
+            Location::new("src/main.ts"),
+        ));
+        r
+    }
+
+    fn lint_result() -> AnalysisResult {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "clippy::style issue",
+            Location::new("src/main.rs"),
+        ));
+        r
+    }
+
+    // ── detect_report_type ──────────────────────────────────────────
+
+    #[test]
+    fn test_detect_report_type_default() {
+        let reporter = MarkdownReporter::new();
+        let (title, _) = reporter.detect_report_type(&single_error_result());
+        assert_eq!(title, "Analysis Report");
+    }
+
+    #[test]
+    fn test_detect_report_type_security() {
+        let reporter = MarkdownReporter::new();
+        let (title, _) = reporter.detect_report_type(&security_audit_result());
+        assert_eq!(title, "Security Audit Report");
+    }
+
+    #[test]
+    fn test_detect_report_type_check() {
+        let reporter = MarkdownReporter::new();
+        let (title, _) = reporter.detect_report_type(&type_check_result());
+        assert_eq!(title, "Type Check Report");
+    }
+
+    #[test]
+    fn test_detect_report_type_lint() {
+        let reporter = MarkdownReporter::new();
+        let (title, _) = reporter.detect_report_type(&lint_result());
+        assert_eq!(title, "Lint Report");
+    }
+
+    // ── Empty result ────────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_empty_result() {
+        let reporter = MarkdownReporter::new();
+        let result = AnalysisResult::new();
+        let report = reporter.generate(&result).unwrap();
+        assert!(report.contains("No issues found"));
+        assert!(report.contains("Analysis Report"));
+    }
+
+    // ── Basic report ────────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_single_error() {
+        let reporter = MarkdownReporter::new();
+        let report = reporter.generate(&single_error_result()).unwrap();
+        assert!(report.contains("undefined reference"));
+        assert!(report.contains("src/main.rs"));
+        assert!(report.contains("Total"));
+        assert!(report.contains("error"));
+    }
+
+    #[test]
+    fn test_generate_multi_issue() {
+        let reporter = MarkdownReporter::new();
+        let report = reporter.generate(&multi_issue_result()).unwrap();
+        assert!(report.contains("type mismatch"));
+        assert!(report.contains("unused var"));
+        assert!(report.contains("consider refactoring"));
+        assert!(report.contains("E0308"));
+        assert!(report.contains("W0001"));
+    }
+
+    #[test]
+    fn test_generate_with_top_error_codes() {
+        let reporter = MarkdownReporter::new();
+        let report = reporter.generate(&multi_issue_result()).unwrap();
+        assert!(report.contains("Top Error Codes"));
+        assert!(report.contains("E0308"));
+        assert!(report.contains("W0001"));
+    }
+
+    // ── Package grouping ────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_with_package_info() {
+        let reporter = MarkdownReporter::new();
+        let mut r = AnalysisResult::new();
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "err in pkg-a", Location::new("a/src/main.rs"))
+                .with_package("pkg-a"),
+        );
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "err in pkg-b", Location::new("b/src/main.rs"))
+                .with_package("pkg-b"),
+        );
+        let report = reporter.generate(&r).unwrap();
+        assert!(report.contains("Details by Package"));
+        assert!(report.contains("pkg-a"));
+        assert!(report.contains("pkg-b"));
+    }
+
+    // ── Verbose / Minimal modes ─────────────────────────────────────
+
+    #[test]
+    fn test_generate_minimal_mode() {
+        let reporter = MarkdownReporter::new();
+        let opts = ReportOptions {
+            verbose: Verbosity::Minimal,
+            ..Default::default()
+        };
+        let report = reporter.generate_with_options(&multi_issue_result(), opts).unwrap();
+        // Minimal mode should still show summary and top files
+        assert!(report.contains("Total"));
+        assert!(report.contains("Top Files"));
+        // But should not show detailed breakdown by category
+        assert!(!report.contains("Breakdown by Category"));
+    }
+
+    #[test]
+    fn test_generate_verbose_mode() {
+        let reporter = MarkdownReporter::new();
+        let opts = ReportOptions {
+            verbose: Verbosity::Verbose,
+            ..Default::default()
+        };
+        let report = reporter.generate_with_options(&multi_issue_result(), opts).unwrap();
+        assert!(report.contains("Breakdown by Category"));
+        assert!(report.contains("Details by File"));
+    }
+
+    // ── Test report ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_test_report_all_passed() {
+        let reporter = MarkdownReporter::new();
+        let result = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        let report = reporter.generate_test_report(&result).unwrap();
+        assert!(report.contains("All Passed"));
+    }
+
+    #[test]
+    fn test_generate_test_report_with_failures() {
+        let reporter = MarkdownReporter::new();
+        let mut result = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        result.test_summary = Some(TestSummary {
+            total: 5,
+            passed: 3,
+            failed: 2,
+            ignored: 0,
+            measured: 0,
+            filtered: 0,
+            execution_time: None,
+        });
+        result.failed_tests = vec![
+            TestCase::new("test_fail", TestStatus::Failed)
+                .with_failure_details("assertion failed: 1 != 2"),
+        ];
+        let report = reporter.generate_test_report(&result).unwrap();
+        assert!(report.contains("Issues Found"));
+        assert!(report.contains("test_fail"));
+        assert!(report.contains("assertion failed"));
+    }
+
+    #[test]
+    fn test_generate_test_report_with_ignored() {
+        let reporter = MarkdownReporter::new();
+        let mut result = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        result.ignored_tests = vec![
+            TestCase::new("test_skip", TestStatus::Ignored(Some("not ready".to_string()))),
+        ];
+        result.passed_tests = vec![
+            TestCase::new("test_pass", TestStatus::Passed),
+        ];
+        let report = reporter.generate_test_report(&result).unwrap();
+        assert!(report.contains("Ignored Tests"));
+        assert!(report.contains("test_skip"));
+        assert!(report.contains("not ready"));
+        assert!(report.contains("Passed Tests"));
+    }
+
+    // ── Short-circuit ───────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_with_options_short_circuit_markdown() {
+        let reporter = MarkdownReporter::new();
+        let empty = AnalysisResult::new();
+        let opts = ReportOptions {
+            success_short_circuit: true,
+            tech_stack: Some("cargo check".to_string()),
+            ..Default::default()
+        };
+        let report = reporter.generate_with_options(&empty, opts).unwrap();
+        assert_eq!(report, "cargo check: no issues found");
+    }
+}

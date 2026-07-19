@@ -51,12 +51,34 @@ impl Classification {
     }
 }
 
+/// Check if a string is a valid POSIX environment variable name.
+///
+/// Valid env var names start with `[a-zA-Z_]` and contain only `[a-zA-Z0-9_]`.
+/// This prevents compiler flags like `-DFOO=bar` from being treated as env vars.
+fn is_valid_env_var_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let bytes = name.as_bytes();
+    if !bytes[0].is_ascii_alphabetic() && bytes[0] != b'_' {
+        return false;
+    }
+    for &b in &bytes[1..] {
+        if !b.is_ascii_alphanumeric() && b != b'_' {
+            return false;
+        }
+    }
+    true
+}
+
 /// Strip environment variable prefixes from a raw command.
 ///
 /// Handles:
 ///   FOO=bar cmd        → cmd
 ///   FOO=bar BAZ=qux cmd → cmd
 ///   KEY="val with spaces" cmd → cmd
+///
+/// Does NOT strip compiler flags like `-DFOO=bar` (only valid POSIX env var names).
 fn strip_env_prefixes(raw: &str) -> &str {
     let bytes = raw.as_bytes();
     let len = bytes.len();
@@ -77,6 +99,14 @@ fn strip_env_prefixes(raw: &str) -> &str {
         if j >= len || bytes[j] != b'=' {
             break;
         }
+
+        // Validate that the key is a valid POSIX env var name.
+        // This prevents compiler flags like -DFOO=bar from being stripped.
+        let key = std::str::from_utf8(&bytes[i..j]).unwrap_or("");
+        if !is_valid_env_var_name(key) {
+            break;
+        }
+
         j += 1;
 
         if j >= len {
@@ -152,7 +182,13 @@ fn classify_command_inner(
     for (idx, rule) in rules::RULES.iter().enumerate() {
         let regex = match Regex::new(&format!("(?i){}", rule.pattern)) {
             Ok(r) => r,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!(
+                    "Warning: failed to compile regex pattern '{}': {}",
+                    rule.pattern, e
+                );
+                continue;
+            }
         };
 
         if let Some(captures) = regex.captures(cleaned) {
@@ -225,6 +261,17 @@ fn fill_capture_refs(template: &str, captures: &regex::Captures) -> String {
             result = result.replace(&placeholder, group.as_str());
         }
     }
+    // Warn about any remaining unreplaced placeholders (e.g. {2} when only 1 capture group exists)
+    if result.contains('{') && result.contains('}') {
+        if let Some(start) = result.find('{') {
+            if result[start..].contains('}') {
+                eprintln!(
+                    "Warning: unreplaced capture reference(s) found in template '{}': '{}'",
+                    template, result
+                );
+            }
+        }
+    }
     result
 }
 
@@ -284,7 +331,13 @@ pub fn classify_with_ruleset(raw_cmd: &str, rule_set: &rules::RuleSet) -> Classi
     for (idx, rule) in rule_set.iter().enumerate() {
         let regex = match Regex::new(&format!("(?i){}", rule.pattern)) {
             Ok(r) => r,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!(
+                    "Warning: failed to compile regex pattern '{}': {}",
+                    rule.pattern, e
+                );
+                continue;
+            }
         };
 
         if let Some(captures) = regex.captures(cleaned) {
@@ -419,6 +472,7 @@ fn shell_words_split(input: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::discover::rules::CommandRule;
 
     #[test]
     fn test_strip_env_prefixes_simple() {
@@ -502,8 +556,8 @@ mod tests {
                 ..
             }
         ));
-        if let Classification::Matched { extra_args, .. } = result {
-            assert_eq!(extra_args, vec!["-v", "tests/"]);
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "-v tests/");
         }
     }
 
@@ -677,5 +731,649 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn test_classify_cargo_nextest() {
+        let result = classify_command("cargo nextest run");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "nextest run");
+        }
+    }
+
+    #[test]
+    fn test_classify_cargo_nextest_list() {
+        let result = classify_command("cargo nextest list --no-tests=pass");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched {
+            subcommand,
+            extra_args,
+            ..
+        } = result
+        {
+            assert_eq!(subcommand, "nextest list");
+            assert!(extra_args.contains(&"--no-tests=pass".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_fill_capture_refs_missing_group() {
+        // Template references {2} but only 1 capture group exists
+        let re = Regex::new(r"^cargo\s+nextest\s+(run|list|archive)\b").unwrap();
+        let captures = re.captures("cargo nextest run").unwrap();
+        let result = fill_capture_refs("nextest {2}", &captures);
+        // {2} is not replaced and should be detected by the warning logic
+        assert!(result.contains("{2}"), "unreplaced placeholder should remain in result");
+    }
+
+    // ============================================================================
+    // strip_env_prefixes edge cases
+    // ============================================================================
+
+    #[test]
+    fn test_strip_env_prefixes_single_quoted() {
+        let result = strip_env_prefixes(r#"KEY='val with spaces' cmd"#);
+        assert_eq!(result, "cmd");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_tab_separated() {
+        let result = strip_env_prefixes("FOO=bar\tcargo check");
+        assert_eq!(result, "cargo check");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_empty_value() {
+        let result = strip_env_prefixes("KEY= cmd");
+        assert_eq!(result, "cmd");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_dash_flag() {
+        // -DFOO=bar is a compiler flag, NOT an environment variable
+        let result = strip_env_prefixes("-DFOO=bar gcc -c src.c");
+        assert_eq!(result, "-DFOO=bar gcc -c src.c");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_no_command() {
+        let result = strip_env_prefixes("FOO=bar");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_leading_whitespace() {
+        let result = strip_env_prefixes("  FOO=bar cargo check");
+        assert_eq!(result, "cargo check");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_invalid_name_start_with_digit() {
+        // 1FOO=bar is not a valid env var name (starts with digit)
+        let result = strip_env_prefixes("1FOO=bar cargo check");
+        assert_eq!(result, "1FOO=bar cargo check");
+    }
+
+    #[test]
+    fn test_strip_env_prefixes_invalid_name_with_hyphen() {
+        // FOO-BAR=qux is not a valid env var name (contains hyphen)
+        let result = strip_env_prefixes("FOO-BAR=qux cargo check");
+        assert_eq!(result, "FOO-BAR=qux cargo check");
+    }
+
+    // ============================================================================
+    // shell_words_split edge cases
+    // ============================================================================
+
+    #[test]
+    fn test_shell_words_split_empty() {
+        let result = shell_words_split("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_shell_words_split_only_spaces() {
+        let result = shell_words_split("   ");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_shell_words_split_single_quotes() {
+        let result = shell_words_split("--name 'John Doe'");
+        assert_eq!(result, vec!["--name", "John Doe"]);
+    }
+
+    #[test]
+    fn test_shell_words_split_mixed_quotes() {
+        let result = shell_words_split(r#"--name "John 'mid' Doe""#);
+        assert_eq!(result, vec!["--name", "John 'mid' Doe"]);
+    }
+
+    #[test]
+    fn test_shell_words_split_backslash_escape() {
+        let result = shell_words_split(r"echo\ hello");
+        assert_eq!(result, vec!["echo hello"]);
+    }
+
+    // ============================================================================
+    // fill_capture_refs edge cases
+    // ============================================================================
+
+    #[test]
+    fn test_fill_capture_refs_no_placeholders() {
+        let re = Regex::new(r"^cargo\s+(check|clippy)").unwrap();
+        let captures = re.captures("cargo check").unwrap();
+        let result = fill_capture_refs("check", &captures);
+        assert_eq!(result, "check");
+    }
+
+    #[test]
+    fn test_fill_capture_refs_all_groups() {
+        let re = Regex::new(
+            r"^(\w+)\s+(\w+)\s+(\w+)\s+(\w+)\s+(\w+)\s+(\w+)\s+(\w+)\s+(\w+)\s+(\w+)",
+        )
+        .unwrap();
+        let captures = re.captures("a b c d e f g h i").unwrap();
+        let result = fill_capture_refs("{1}/{2}/{3}/{4}/{5}/{6}/{7}/{8}/{9}", &captures);
+        assert_eq!(result, "a/b/c/d/e/f/g/h/i");
+    }
+
+    // ============================================================================
+    // classify_command edge cases
+    // ============================================================================
+
+    #[test]
+    fn test_classify_cargo_alone() {
+        // "cargo" alone should not match any rule (no subcommand)
+        let result = classify_command("cargo");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_ruff_alone() {
+        // "ruff" alone should not match (pattern requires subcommand check|format)
+        let result = classify_command("ruff");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_empty_string() {
+        let result = classify_command("");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_only_spaces() {
+        let result = classify_command("   ");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_with_tab_separator() {
+        let result = classify_command("cargo\tcheck");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "check");
+        }
+    }
+
+    #[test]
+    fn test_classify_gcc_linking() {
+        // gcc without -c flag should NOT match the compile rule
+        let result = classify_command("gcc -o output main.c");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_clang_linking() {
+        // clang without -c flag should NOT match the compile rule
+        let result = classify_command("clang -o output main.c");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_clang_format() {
+        let result = classify_command("clang-format -i src/*.cpp");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::ClangFormat,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "format");
+        }
+    }
+
+    #[test]
+    fn test_classify_msvc() {
+        let result = classify_command("msvc /c src/main.cpp");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Msvc,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "compile");
+        }
+    }
+
+    #[test]
+    fn test_classify_golangci_lint_run() {
+        let result = classify_command("golangci-lint run --timeout=5m");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::GolangciLint,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "run");
+        }
+    }
+
+    #[test]
+    fn test_classify_gradle_check() {
+        let result = classify_command("gradle check");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Gradle,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "check");
+        }
+    }
+
+    #[test]
+    fn test_classify_gradlew_test() {
+        let result = classify_command("gradlew test --info");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Gradle,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "test");
+        }
+    }
+
+    #[test]
+    fn test_classify_dotnet_format() {
+        let result = classify_command("dotnet format --check");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Dotnet,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "format");
+        }
+    }
+
+    #[test]
+    fn test_classify_mvn_compile() {
+        let result = classify_command("mvn compile -q");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Maven,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "compile");
+        }
+    }
+
+    #[test]
+    fn test_classify_yarn_audit() {
+        let result = classify_command("yarn audit --production");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Yarn,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "run audit");
+        }
+    }
+
+    #[test]
+    fn test_classify_bundle_exec_rspec() {
+        let result = classify_command("bundle exec rspec spec/models/");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Rspec,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "spec/models/");
+        }
+    }
+
+    #[test]
+    fn test_classify_npm_build_fallback() {
+        // "npm run build" uses the fallback rule since "build" is not in the specific list
+        let result = classify_command("npm run build");
+        // The fallback rule pattern "^npm\s+(?:run\s+)?(\S+)" with template "run {1}"
+        // captures "build" as group 1, producing "run build"
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Npm,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "run build");
+        }
+    }
+
+    #[test]
+    fn test_classify_dash_flag_env_not_stripped() {
+        // -DFOO=bar is a compiler flag, not an env var, so it should NOT be stripped
+        // The command stays as "-DFOO=bar gcc -c src.c", which doesn't start with gcc/g++
+        // so it should be Unmatched (the GCC rule requires the command to start with gcc/g++)
+        let result = classify_command("-DFOO=bar gcc -c src.c");
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    // ============================================================================
+    // classify_command_with_config
+    // ============================================================================
+
+    #[test]
+    fn test_classify_with_config_fallback() {
+        use std::collections::HashMap;
+        let mut commands = HashMap::new();
+        commands.insert(
+            "my-tool".to_string(),
+            CommandConfig {
+                exec: "check".to_string(),
+                description: Some("my custom tool".to_string()),
+                tech_stacks: vec!["cargo".to_string()],
+                enabled: true,
+            },
+        );
+        let result = classify_command_with_config("my-tool --verbose", &commands);
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched {
+            subcommand,
+            extra_args,
+            ..
+        } = result
+        {
+            assert_eq!(subcommand, "check");
+            assert_eq!(extra_args, vec!["--verbose"]);
+        }
+    }
+
+    #[test]
+    fn test_classify_with_config_disabled() {
+        use std::collections::HashMap;
+        let mut commands = HashMap::new();
+        commands.insert(
+            "my-tool".to_string(),
+            CommandConfig {
+                exec: "check".to_string(),
+                description: Some("my custom tool".to_string()),
+                tech_stacks: vec!["cargo".to_string()],
+                enabled: false,
+            },
+        );
+        // Disabled command should not match, fall through to unmatched
+        let result = classify_command_with_config("my-tool --verbose", &commands);
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_with_config_empty_commands() {
+        use std::collections::HashMap;
+        let commands = HashMap::new();
+        // Should fall through to static rules
+        let result = classify_command_with_config("cargo check", &commands);
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_classify_with_config_empty_tech_stacks() {
+        use std::collections::HashMap;
+        let mut commands = HashMap::new();
+        commands.insert(
+            "my-tool".to_string(),
+            CommandConfig {
+                exec: "check".to_string(),
+                description: None,
+                tech_stacks: vec![],  // empty tech_stacks should not match
+                enabled: true,
+            },
+        );
+        let result = classify_command_with_config("my-tool", &commands);
+        // No tech_stacks means config fallback can't determine the tech stack
+        assert!(matches!(result, Classification::Unmatched { .. }));
+    }
+
+    #[test]
+    fn test_classify_with_config_static_rule_takes_priority() {
+        // Static rules should match before config fallback is even tried
+        use std::collections::HashMap;
+        let mut commands = HashMap::new();
+        commands.insert(
+            "cargo".to_string(),
+            CommandConfig {
+                exec: "custom".to_string(),
+                description: None,
+                tech_stacks: vec!["npm".to_string()],
+                enabled: true,
+            },
+        );
+        // Even though there's a config for "cargo", the static rule should match first
+        let result = classify_command_with_config("cargo check", &commands);
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "check");
+        }
+    }
+
+    // ============================================================================
+    // rewrite_command_with_config
+    // ============================================================================
+
+    #[test]
+    fn test_rewrite_with_config() {
+        use std::collections::HashMap;
+        let mut commands = HashMap::new();
+        commands.insert(
+            "my-tool".to_string(),
+            CommandConfig {
+                exec: "check".to_string(),
+                description: Some("my custom tool".to_string()),
+                tech_stacks: vec!["cargo".to_string()],
+                enabled: true,
+            },
+        );
+        let result = rewrite_command_with_config("my-tool --verbose", &commands);
+        assert!(result.is_some());
+        let (ts, sub, extra) = result.unwrap();
+        assert_eq!(ts, TechStack::Cargo);
+        assert_eq!(sub, "check");
+        assert_eq!(extra, vec!["--verbose"]);
+    }
+
+    #[test]
+    fn test_rewrite_with_config_unmatched() {
+        use std::collections::HashMap;
+        let commands = HashMap::new();
+        let result = rewrite_command_with_config("unknown-tool", &commands);
+        assert!(result.is_none());
+    }
+
+    // ============================================================================
+    // classify_by_category / classify_with_ruleset
+    // ============================================================================
+
+    #[test]
+    fn test_classify_by_category_rust() {
+        let result = classify_by_category("cargo check", "Rust");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched { subcommand, .. } = result {
+            assert_eq!(subcommand, "check");
+        }
+    }
+
+    #[test]
+    fn test_classify_by_category_python_fallback() {
+        // Python category rules don't match "cargo check", falls back to full RULES
+        let result = classify_by_category("cargo check", "Python");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_classify_by_category_nonexistent() {
+        // Non-existent category should fall back to full RULES
+        let result = classify_by_category("cargo check", "NonExistent");
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_classify_with_ruleset_custom() {
+        let custom_rules = &[CommandRule {
+            pattern: r"^my-tool\s+(check|test)",
+            tech_stack: TechStack::Cargo,
+            subcommand_template: "{1}",
+            prefixes: &["my-tool"],
+            category: "Custom",
+        }];
+        let custom_set = rules::RuleSet::new("Custom", custom_rules);
+        let result = classify_with_ruleset("my-tool check --all", &custom_set);
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+        if let Classification::Matched {
+            subcommand,
+            extra_args,
+            ..
+        } = result
+        {
+            assert_eq!(subcommand, "check");
+            assert_eq!(extra_args, vec!["--all"]);
+        }
+    }
+
+    #[test]
+    fn test_classify_with_ruleset_fallback() {
+        // Custom ruleset doesn't match "cargo check", falls back to full RULES
+        let custom_rules = &[CommandRule {
+            pattern: r"^my-tool\s+(check|test)",
+            tech_stack: TechStack::Cargo,
+            subcommand_template: "{1}",
+            prefixes: &["my-tool"],
+            category: "Custom",
+        }];
+        let custom_set = rules::RuleSet::new("Custom", custom_rules);
+        let result = classify_with_ruleset("cargo check", &custom_set);
+        assert!(matches!(
+            result,
+            Classification::Matched {
+                tech_stack: TechStack::Cargo,
+                ..
+            }
+        ));
+    }
+
+    // ============================================================================
+    // is_valid_env_var_name
+    // ============================================================================
+
+    #[test]
+    fn test_is_valid_env_var_name_valid() {
+        assert!(is_valid_env_var_name("FOO"));
+        assert!(is_valid_env_var_name("foo"));
+        assert!(is_valid_env_var_name("_FOO"));
+        assert!(is_valid_env_var_name("FOO_BAR"));
+        assert!(is_valid_env_var_name("FOO123"));
+    }
+
+    #[test]
+    fn test_is_valid_env_var_name_invalid() {
+        assert!(!is_valid_env_var_name(""));
+        assert!(!is_valid_env_var_name("-DFOO"));
+        assert!(!is_valid_env_var_name("1FOO"));
+        assert!(!is_valid_env_var_name("FOO-BAR"));
+        assert!(!is_valid_env_var_name(".FOO"));
     }
 }

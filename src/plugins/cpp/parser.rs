@@ -164,3 +164,209 @@ impl Default for CppParser {
         Self::new(CompilerType::Gcc)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── GCC style ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_gcc_parse_error() {
+        let parser = CppParser::with_gcc();
+        let output = "src/main.cpp:10:5: error: 'x' was not declared in this scope [-Wdeclaration]";
+        let issues = parser.parse_gcc_style(output);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].location.file_path, "src/main.cpp");
+        assert_eq!(issues[0].location.line_number, Some(10));
+        assert_eq!(issues[0].location.column_number, Some(5));
+        assert_eq!(issues[0].level, IssueLevel::Error);
+        assert_eq!(issues[0].code, Some("-Wdeclaration".to_string()));
+    }
+
+    #[test]
+    fn test_gcc_parse_warning() {
+        let parser = CppParser::with_gcc();
+        let output = "src/main.cpp:42:10: warning: unused parameter [-Wunused-param]";
+        let issues = parser.parse_gcc_style(output);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].level, IssueLevel::Warning);
+        assert_eq!(issues[0].code, Some("-Wunused-param".to_string()));
+    }
+
+    #[test]
+    fn test_gcc_parse_note() {
+        let parser = CppParser::with_gcc();
+        let output = "src/main.cpp:50:3: note: in expansion of macro 'FOO'";
+        let issues = parser.parse_gcc_style(output);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].level, IssueLevel::Info);
+        assert!(issues[0].code.is_none());
+    }
+
+    #[test]
+    fn test_gcc_parse_no_match() {
+        let parser = CppParser::with_gcc();
+        let output = "Some random build output line";
+        let issues = parser.parse_gcc_style(output);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_gcc_parse_multiple_issues() {
+        let parser = CppParser::with_gcc();
+        let output = "\
+src/main.cpp:10:5: error: undefined reference to 'foo'
+src/main.cpp:20:3: warning: unused variable 'bar' [-Wunused-variable]
+src/lib.cpp:1:1: warning: no newline at end of file [-Wnewline-eof]";
+        let issues = parser.parse_gcc_style(output);
+        assert_eq!(issues.len(), 3);
+        assert_eq!(issues[0].level, IssueLevel::Error);
+        assert_eq!(issues[1].level, IssueLevel::Warning);
+        assert_eq!(issues[2].level, IssueLevel::Warning);
+    }
+
+    // ── MSVC style ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_msvc_parse_error() {
+        let parser = CppParser::with_msvc();
+        let output = "src\\main.cpp(10,5): error C2065: 'x' : undeclared identifier";
+        let issues = parser.parse_msvc_style(output);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].location.file_path, "src\\main.cpp");
+        assert_eq!(issues[0].location.line_number, Some(10));
+        assert_eq!(issues[0].location.column_number, Some(5));
+        assert_eq!(issues[0].level, IssueLevel::Error);
+        assert_eq!(issues[0].code, Some("C2065".to_string()));
+    }
+
+    #[test]
+    fn test_msvc_parse_warning() {
+        let parser = CppParser::with_msvc();
+        let output = "src\\main.cpp(42): warning C4100: 'x' : unreferenced formal parameter";
+        let issues = parser.parse_msvc_style(output);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].level, IssueLevel::Warning);
+        assert_eq!(issues[0].location.line_number, Some(42));
+        assert!(issues[0].location.column_number.is_none());
+    }
+
+    #[test]
+    fn test_msvc_parse_fatal_error() {
+        let parser = CppParser::with_msvc();
+        let output = "src\\main.cpp(1): fatal error C1083: Cannot open include file: 'missing.h'";
+        let issues = parser.parse_msvc_style(output);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].level, IssueLevel::Error);
+        assert_eq!(issues[0].code, Some("C1083".to_string()));
+    }
+
+    #[test]
+    fn test_msvc_parse_no_match() {
+        let parser = CppParser::with_msvc();
+        let output = "Microsoft (R) Build Engine version 16.0";
+        let issues = parser.parse_msvc_style(output);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_msvc_parse_multiple_issues() {
+        let parser = CppParser::with_msvc();
+        let output = "\
+src\\main.cpp(10,5): error C2065: 'x' : undeclared
+src\\main.cpp(20,1): warning C4100: 'y' : unused";
+        let issues = parser.parse_msvc_style(output);
+        assert_eq!(issues.len(), 2);
+    }
+
+    // ── detect_compiler_type ────────────────────────────────────────
+
+    #[test]
+    fn test_detect_compiler_type_clang() {
+        assert_eq!(
+            CppParser::detect_compiler_type("clang version 15.0.0"),
+            CompilerType::Clang
+        );
+        assert_eq!(
+            CppParser::detect_compiler_type("clang++ (LLVM)"),
+            CompilerType::Clang
+        );
+    }
+
+    #[test]
+    fn test_detect_compiler_type_gcc() {
+        assert_eq!(
+            CppParser::detect_compiler_type("gcc version 12.0.0"),
+            CompilerType::Gcc
+        );
+        assert_eq!(
+            CppParser::detect_compiler_type("g++ (GCC)"),
+            CompilerType::Gcc
+        );
+    }
+
+    #[test]
+    fn test_detect_compiler_type_msvc() {
+        assert_eq!(
+            CppParser::detect_compiler_type("Microsoft (R) C/C++ Optimizing Compiler"),
+            CompilerType::Msvc
+        );
+        assert_eq!(
+            CppParser::detect_compiler_type("cl.exe"),
+            CompilerType::Msvc
+        );
+        assert_eq!(
+            CppParser::detect_compiler_type("Microsoft (R) Build Engine"),
+            CompilerType::Msvc
+        );
+    }
+
+    #[test]
+    fn test_detect_compiler_type_unknown_defaults_to_gcc() {
+        assert_eq!(
+            CppParser::detect_compiler_type("some unknown compiler"),
+            CompilerType::Gcc
+        );
+    }
+
+    // ── OutputParser trait ──────────────────────────────────────────
+
+    #[test]
+    fn test_parse_gcc_via_trait() {
+        let parser = CppParser::with_gcc();
+        let output = "src/main.cpp:10:5: error: undefined reference";
+        let result = parser.parse(output);
+        assert!(result.is_full());
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_clang_via_trait() {
+        let parser = CppParser::with_clang();
+        let output = "src/main.cpp:10:5: error: use of undeclared identifier";
+        let result = parser.parse(output);
+        assert!(result.is_full());
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_msvc_via_trait() {
+        let parser = CppParser::with_msvc();
+        let output = "src\\main.cpp(10,5): error C2065: 'x' : undeclared identifier";
+        let result = parser.parse(output);
+        assert!(result.is_full());
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_empty_output() {
+        let parser = CppParser::with_gcc();
+        let result = parser.parse("");
+        assert!(result.is_full());
+        assert!(result.data().unwrap().is_empty());
+    }
+}

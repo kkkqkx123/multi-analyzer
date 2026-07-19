@@ -495,9 +495,10 @@ impl SubCommand {
         }
     }
 
-    /// All commands are treated as custom since we use free-form strings
+    /// Returns true if the command category is `Custom` (i.e. does not match
+    /// any known pattern like `check`, `test`, `build`, etc.).
     pub fn is_custom(&self) -> bool {
-        true
+        matches!(self.category(), CommandCategory::Custom)
     }
 }
 
@@ -643,7 +644,7 @@ impl AnalyzeOptions {
 }
 
 /// Report format
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ReportFormat {
     #[default]
     Markdown,
@@ -684,5 +685,787 @@ impl std::str::FromStr for ReportFormat {
             "raw-json" | "raw_json" => Ok(ReportFormat::RawJson),
             _ => Err(format!("Unknown report format: {}", s)),
         }
+    }
+}
+
+#[cfg(test)]
+mod types_tests {
+    use super::*;
+
+    // ── AnalysisResult ──────────────────────────────────────────────
+
+    #[test]
+    fn test_empty_analysis_result() {
+        let r = AnalysisResult::new();
+        assert_eq!(r.total_issues, 0);
+        assert!(r.unique_patterns.is_empty());
+        assert!(r.issues_by_code.is_empty());
+        assert!(r.issues_by_file.is_empty());
+        assert!(r.issues_by_level.is_empty());
+        assert!(r.issues_by_package.is_empty());
+        assert!(r.issues_by_type.is_empty());
+    }
+
+    #[test]
+    fn test_analysis_result_from_issues() {
+        let issues = vec![
+            Issue::new(IssueLevel::Error, "type mismatch", Location::new("a.rs")),
+            Issue::new(IssueLevel::Warning, "unused var", Location::new("b.rs")),
+        ];
+        let r = AnalysisResult::from_issues(issues);
+        assert_eq!(r.total_issues, 2);
+        assert_eq!(r.error_count(), 1);
+        assert_eq!(r.warning_count(), 1);
+    }
+
+    #[test]
+    fn test_add_issue_error_level() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "err msg", Location::new("f.rs")));
+        assert_eq!(r.total_issues, 1);
+        assert_eq!(r.error_count(), 1);
+        assert_eq!(r.warning_count(), 0);
+    }
+
+    #[test]
+    fn test_add_issue_warning_level() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "warn msg",
+            Location::new("f.rs"),
+        ));
+        assert_eq!(r.total_issues, 1);
+        assert_eq!(r.error_count(), 0);
+        assert_eq!(r.warning_count(), 1);
+    }
+
+    #[test]
+    fn test_add_issue_info_hint_levels() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Info, "info msg", Location::new("f.rs")));
+        r.add_issue(Issue::new(IssueLevel::Hint, "hint msg", Location::new("f.rs")));
+        assert_eq!(r.total_issues, 2);
+        assert_eq!(r.error_count(), 0);
+        assert_eq!(r.warning_count(), 0);
+        assert_eq!(*r.issues_by_level.get(&IssueLevel::Info).unwrap(), 1);
+        assert_eq!(*r.issues_by_level.get(&IssueLevel::Hint).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_add_issue_with_code() {
+        let mut r = AnalysisResult::new();
+        let issue = Issue::new(IssueLevel::Error, "msg", Location::new("f.rs"))
+            .with_code("E0308");
+        r.add_issue(issue);
+        assert_eq!(*r.issues_by_code.get("E0308").unwrap(), 1);
+        // type_key should use the code
+        assert_eq!(*r.issues_by_type.get("E0308").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_add_issue_without_code_uses_pattern() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "a quick brown fox jumps over",
+            Location::new("f.rs"),
+        ));
+        let pattern = "a quick brown fox jumps";
+        assert_eq!(*r.issues_by_type.get(pattern).unwrap(), 1);
+        assert!(r.unique_patterns.contains(pattern));
+    }
+
+    #[test]
+    fn test_issues_by_file_grouping() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("a.rs")));
+        r.add_issue(Issue::new(IssueLevel::Error, "e2", Location::new("a.rs")));
+        r.add_issue(Issue::new(IssueLevel::Error, "e3", Location::new("b.rs")));
+        assert_eq!(r.issues_by_file.get("a.rs").unwrap().len(), 2);
+        assert_eq!(r.issues_by_file.get("b.rs").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_issues_by_package_grouping() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "e1", Location::new("a.rs"))
+                .with_package("pkg-a"),
+        );
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "e2", Location::new("b.rs"))
+                .with_package("pkg-b"),
+        );
+        r.add_issue(Issue::new(IssueLevel::Error, "e3", Location::new("c.rs")));
+        assert_eq!(r.issues_by_package.get("pkg-a").unwrap().len(), 1);
+        assert_eq!(r.issues_by_package.get("pkg-b").unwrap().len(), 1);
+        // No package → "unknown"
+        assert_eq!(r.issues_by_package.get("unknown").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_errors_method() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("a.rs")));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("a.rs"),
+        ));
+        r.add_issue(Issue::new(IssueLevel::Error, "e2", Location::new("b.rs")));
+        let errors = r.errors();
+        assert_eq!(errors.len(), 2);
+        assert!(errors.iter().all(|i| i.level == IssueLevel::Error));
+    }
+
+    #[test]
+    fn test_warnings_method() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("a.rs"),
+        ));
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("a.rs")));
+        let warnings = r.warnings();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings.iter().all(|i| i.level == IssueLevel::Warning));
+    }
+
+    #[test]
+    fn test_errors_warnings_empty() {
+        let r = AnalysisResult::new();
+        assert!(r.errors().is_empty());
+        assert!(r.warnings().is_empty());
+    }
+
+    #[test]
+    fn test_error_count() {
+        let mut r = AnalysisResult::new();
+        assert_eq!(r.error_count(), 0);
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("a.rs")));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("a.rs"),
+        ));
+        r.add_issue(Issue::new(IssueLevel::Error, "e2", Location::new("b.rs")));
+        assert_eq!(r.error_count(), 2);
+    }
+
+    #[test]
+    fn test_warning_count() {
+        let mut r = AnalysisResult::new();
+        assert_eq!(r.warning_count(), 0);
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("a.rs"),
+        ));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w2",
+            Location::new("b.rs"),
+        ));
+        assert_eq!(r.warning_count(), 2);
+    }
+
+    #[test]
+    fn test_top_error_codes_empty() {
+        let r = AnalysisResult::new();
+        assert!(r.top_error_codes(5).is_empty());
+    }
+
+    #[test]
+    fn test_top_error_codes_sorted() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "msg", Location::new("a.rs"))
+                .with_code("C001"),
+        );
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "msg", Location::new("a.rs"))
+                .with_code("C001"),
+        );
+        r.add_issue(
+            Issue::new(IssueLevel::Error, "msg", Location::new("a.rs"))
+                .with_code("C002"),
+        );
+        let top = r.top_error_codes(5);
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0], ("C001".to_string(), 2));
+        assert_eq!(top[1], ("C002".to_string(), 1));
+    }
+
+    #[test]
+    fn test_top_error_codes_truncate() {
+        let mut r = AnalysisResult::new();
+        for i in 0..10 {
+            r.add_issue(
+                Issue::new(IssueLevel::Error, "msg", Location::new("a.rs"))
+                    .with_code(format!("C{:03}", i)),
+            );
+        }
+        assert_eq!(r.top_error_codes(3).len(), 3);
+    }
+
+    #[test]
+    fn test_extract_pattern_short_message() {
+        let r = AnalysisResult::new();
+        assert_eq!(r.extract_pattern("hi"), "hi".to_string());
+    }
+
+    #[test]
+    fn test_extract_pattern_long_message() {
+        let r = AnalysisResult::new();
+        assert_eq!(
+            r.extract_pattern("a b c d e f g h"),
+            "a b c d e".to_string()
+        );
+    }
+
+    #[test]
+    fn test_filter_by_options_no_filter() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("a.rs")));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("a.rs"),
+        ));
+        let opts = AnalyzeOptions::default();
+        let filtered = r.filter_by_options(&opts);
+        assert_eq!(filtered.total_issues, 2);
+    }
+
+    #[test]
+    fn test_filter_by_options_filter_warnings() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("a.rs")));
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("a.rs"),
+        ));
+        let opts = AnalyzeOptions {
+            filter_warnings: true,
+            ..Default::default()
+        };
+        let filtered = r.filter_by_options(&opts);
+        assert_eq!(filtered.total_issues, 1);
+        assert_eq!(filtered.error_count(), 1);
+    }
+
+    #[test]
+    fn test_filter_by_options_filter_paths() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(IssueLevel::Error, "e1", Location::new("src/a.rs")));
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "e2",
+            Location::new("tests/b.rs"),
+        ));
+        let opts = AnalyzeOptions {
+            filter_paths: vec!["src".to_string()],
+            ..Default::default()
+        };
+        let filtered = r.filter_by_options(&opts);
+        assert_eq!(filtered.total_issues, 1);
+    }
+
+    #[test]
+    fn test_filter_by_options_max_issues() {
+        let mut r = AnalysisResult::new();
+        for i in 0..10 {
+            r.add_issue(Issue::new(
+                IssueLevel::Error,
+                format!("e{}", i),
+                Location::new("a.rs"),
+            ));
+        }
+        let opts = AnalyzeOptions {
+            max_issues: Some(3),
+            ..Default::default()
+        };
+        let filtered = r.filter_by_options(&opts);
+        assert_eq!(filtered.total_issues, 3);
+    }
+
+    #[test]
+    fn test_filter_by_options_combined() {
+        let mut r = AnalysisResult::new();
+        r.add_issue(Issue::new(
+            IssueLevel::Warning,
+            "w1",
+            Location::new("src/a.rs"),
+        ));
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "e1",
+            Location::new("src/a.rs"),
+        ));
+        r.add_issue(Issue::new(
+            IssueLevel::Error,
+            "e2",
+            Location::new("tests/b.rs"),
+        ));
+        let opts = AnalyzeOptions {
+            filter_warnings: true,
+            filter_paths: vec!["src".to_string()],
+            max_issues: Some(10),
+            ..Default::default()
+        };
+        let filtered = r.filter_by_options(&opts);
+        assert_eq!(filtered.total_issues, 1);
+    }
+
+    // ── Issue builder ───────────────────────────────────────────────
+
+    #[test]
+    fn test_issue_builder_basic() {
+        let issue = Issue::new(IssueLevel::Error, "test msg", Location::new("f.rs"));
+        assert_eq!(issue.level, IssueLevel::Error);
+        assert_eq!(issue.message, "test msg");
+        assert_eq!(issue.location.file_path, "f.rs");
+        assert!(issue.code.is_none());
+        assert!(issue.context.is_none());
+        assert!(issue.package.is_none());
+    }
+
+    #[test]
+    fn test_issue_with_code() {
+        let issue = Issue::new(IssueLevel::Error, "msg", Location::new("f.rs"))
+            .with_code("E0308");
+        assert_eq!(issue.code.unwrap(), "E0308");
+    }
+
+    #[test]
+    fn test_issue_with_context() {
+        let issue = Issue::new(IssueLevel::Error, "msg", Location::new("f.rs"))
+            .with_context("expected type X");
+        assert_eq!(issue.context.unwrap(), "expected type X");
+    }
+
+    #[test]
+    fn test_issue_with_package() {
+        let issue = Issue::new(IssueLevel::Error, "msg", Location::new("f.rs"))
+            .with_package("my-crate");
+        assert_eq!(issue.package.unwrap(), "my-crate");
+    }
+
+    #[test]
+    fn test_issue_chained_builders() {
+        let issue = Issue::new(IssueLevel::Warning, "unused", Location::new("lib.rs"))
+            .with_code("W0001")
+            .with_context("consider removing")
+            .with_package("core");
+        assert_eq!(issue.code.unwrap(), "W0001");
+        assert_eq!(issue.context.unwrap(), "consider removing");
+        assert_eq!(issue.package.unwrap(), "core");
+    }
+
+    // ── Location builder ────────────────────────────────────────────
+
+    #[test]
+    fn test_location_basic() {
+        let loc = Location::new("src/main.rs");
+        assert_eq!(loc.file_path, "src/main.rs");
+        assert!(loc.line_number.is_none());
+        assert!(loc.column_number.is_none());
+    }
+
+    #[test]
+    fn test_location_with_line() {
+        let loc = Location::new("f.rs").with_line(42);
+        assert_eq!(loc.line_number, Some(42));
+        assert!(loc.column_number.is_none());
+    }
+
+    #[test]
+    fn test_location_with_column() {
+        let loc = Location::new("f.rs").with_line(10).with_column(5);
+        assert_eq!(loc.line_number, Some(10));
+        assert_eq!(loc.column_number, Some(5));
+    }
+
+    // ── TestCase builder ────────────────────────────────────────────
+
+    #[test]
+    fn test_test_case_basic() {
+        let tc = TestCase::new("test_foo", TestStatus::Passed);
+        assert_eq!(tc.name, "test_foo");
+        assert_eq!(tc.status, TestStatus::Passed);
+        assert!(tc.location.is_none());
+        assert!(tc.failure_details.is_none());
+    }
+
+    #[test]
+    fn test_test_case_with_location() {
+        let tc = TestCase::new("test_bar", TestStatus::Failed)
+            .with_location(Location::new("tests/test.rs").with_line(15));
+        assert!(tc.location.is_some());
+        assert_eq!(tc.location.unwrap().line_number, Some(15));
+    }
+
+    #[test]
+    fn test_test_case_with_failure_details() {
+        let tc = TestCase::new("test_baz", TestStatus::Failed)
+            .with_failure_details("assertion failed: 1 != 2");
+        assert_eq!(
+            tc.failure_details.unwrap(),
+            "assertion failed: 1 != 2"
+        );
+    }
+
+    #[test]
+    fn test_test_case_with_execution_time() {
+        let tc = TestCase::new("test_qux", TestStatus::Passed).with_execution_time(0.123);
+        assert!((tc.execution_time.unwrap() - 0.123).abs() < 1e-9);
+    }
+
+    // ── TestSummary ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_test_summary_default() {
+        let s = TestSummary::default();
+        assert_eq!(s.total, 0);
+        assert_eq!(s.passed, 0);
+        assert_eq!(s.failed, 0);
+        assert_eq!(s.ignored, 0);
+    }
+
+    #[test]
+    fn test_test_summary_execution_time() {
+        let mut s = TestSummary::default();
+        assert!(s.execution_time().is_none());
+        s.execution_time = Some(1.5);
+        assert!((s.execution_time().unwrap() - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_test_summary_execution_time_formatted() {
+        let mut s = TestSummary::default();
+        assert_eq!(s.execution_time_formatted(), "N/A");
+        s.execution_time = Some(2.5);
+        assert_eq!(s.execution_time_formatted(), "2.50s");
+    }
+
+    // ── TestAnalysisResult ──────────────────────────────────────────
+
+    #[test]
+    fn test_test_analysis_result_from_compile_result() {
+        let r = AnalysisResult::from_issues(vec![Issue::new(
+            IssueLevel::Error,
+            "compile err",
+            Location::new("src/main.rs"),
+        )]);
+        let tar = TestAnalysisResult::from_compile_result(r);
+        assert_eq!(tar.compile_result.total_issues, 1);
+        assert!(!tar.all_passed());
+        assert_eq!(tar.total_tests(), 0);
+    }
+
+    #[test]
+    fn test_test_analysis_result_all_passed() {
+        let r = AnalysisResult::new();
+        let mut tar = TestAnalysisResult::from_compile_result(r);
+        assert!(tar.all_passed());
+        tar.failed_tests
+            .push(TestCase::new("test_fail", TestStatus::Failed));
+        assert!(!tar.all_passed());
+    }
+
+    #[test]
+    fn test_test_analysis_result_total_tests() {
+        let mut tar = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        tar.passed_tests
+            .push(TestCase::new("t1", TestStatus::Passed));
+        tar.failed_tests
+            .push(TestCase::new("t2", TestStatus::Failed));
+        tar.ignored_tests
+            .push(TestCase::new("t3", TestStatus::Ignored(None)));
+        assert_eq!(tar.total_tests(), 3);
+    }
+
+    // ── TechStack FromStr ───────────────────────────────────────────
+
+    #[test]
+    fn test_tech_stack_from_str_primary_names() {
+        assert_eq!("cargo".parse::<TechStack>().unwrap(), TechStack::Cargo);
+        assert_eq!("maven".parse::<TechStack>().unwrap(), TechStack::Maven);
+        assert_eq!("gradle".parse::<TechStack>().unwrap(), TechStack::Gradle);
+        assert_eq!("npm".parse::<TechStack>().unwrap(), TechStack::Npm);
+        assert_eq!("pnpm".parse::<TechStack>().unwrap(), TechStack::Pnpm);
+        assert_eq!("yarn".parse::<TechStack>().unwrap(), TechStack::Yarn);
+        assert_eq!("mypy".parse::<TechStack>().unwrap(), TechStack::Mypy);
+        assert_eq!("pytest".parse::<TechStack>().unwrap(), TechStack::Pytest);
+        assert_eq!("go".parse::<TechStack>().unwrap(), TechStack::GoBuild);
+        assert_eq!("golangci-lint".parse::<TechStack>().unwrap(), TechStack::GolangciLint);
+        assert_eq!("dotnet".parse::<TechStack>().unwrap(), TechStack::Dotnet);
+        assert_eq!("rubocop".parse::<TechStack>().unwrap(), TechStack::Rubocop);
+        assert_eq!("rspec".parse::<TechStack>().unwrap(), TechStack::Rspec);
+        assert_eq!("ruff".parse::<TechStack>().unwrap(), TechStack::Ruff);
+        assert_eq!("black".parse::<TechStack>().unwrap(), TechStack::Black);
+        assert_eq!("cmake".parse::<TechStack>().unwrap(), TechStack::CMake);
+        assert_eq!("gcc".parse::<TechStack>().unwrap(), TechStack::Gcc);
+        assert_eq!("clang".parse::<TechStack>().unwrap(), TechStack::Clang);
+        assert_eq!("clang-format".parse::<TechStack>().unwrap(), TechStack::ClangFormat);
+        assert_eq!("msvc".parse::<TechStack>().unwrap(), TechStack::Msvc);
+        assert_eq!("cargo-nextest".parse::<TechStack>().unwrap(), TechStack::Nextest);
+    }
+
+    #[test]
+    fn test_tech_stack_from_str_aliases() {
+        assert_eq!("rust".parse::<TechStack>().unwrap(), TechStack::Cargo);
+        assert_eq!("mvn".parse::<TechStack>().unwrap(), TechStack::Maven);
+        assert_eq!("gradlew".parse::<TechStack>().unwrap(), TechStack::Gradle);
+        assert_eq!("node".parse::<TechStack>().unwrap(), TechStack::Npm);
+        assert_eq!("nextest".parse::<TechStack>().unwrap(), TechStack::Nextest);
+        assert_eq!("py.test".parse::<TechStack>().unwrap(), TechStack::Pytest);
+        assert_eq!("golang".parse::<TechStack>().unwrap(), TechStack::GoBuild);
+        assert_eq!("msbuild".parse::<TechStack>().unwrap(), TechStack::Dotnet);
+        assert_eq!("csharp".parse::<TechStack>().unwrap(), TechStack::Dotnet);
+        assert_eq!("ruby".parse::<TechStack>().unwrap(), TechStack::Rubocop);
+        assert_eq!("rails".parse::<TechStack>().unwrap(), TechStack::Rubocop);
+        assert_eq!("python-lint".parse::<TechStack>().unwrap(), TechStack::Ruff);
+        assert_eq!("cmake-build".parse::<TechStack>().unwrap(), TechStack::CMake);
+        assert_eq!("g++".parse::<TechStack>().unwrap(), TechStack::Gcc);
+        assert_eq!("clang++".parse::<TechStack>().unwrap(), TechStack::Clang);
+        assert_eq!("cl".parse::<TechStack>().unwrap(), TechStack::Msvc);
+    }
+
+    #[test]
+    fn test_tech_stack_from_str_case_insensitive() {
+        assert_eq!("Cargo".parse::<TechStack>().unwrap(), TechStack::Cargo);
+        assert_eq!("MAVEN".parse::<TechStack>().unwrap(), TechStack::Maven);
+        assert_eq!("Npm".parse::<TechStack>().unwrap(), TechStack::Npm);
+    }
+
+    #[test]
+    fn test_tech_stack_from_str_unknown() {
+        let result = "unknown-tool".parse::<TechStack>();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown-tool"));
+    }
+
+    // ── SubCommand ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_sub_command_new_and_as_str() {
+        let cmd = SubCommand::new("check");
+        assert_eq!(cmd.as_str(), "check");
+    }
+
+    #[test]
+    fn test_sub_command_category_check() {
+        assert_eq!(
+            SubCommand::new("check").category(),
+            CommandCategory::Check
+        );
+        assert_eq!(
+            SubCommand::new("typecheck").category(),
+            CommandCategory::Check
+        );
+    }
+
+    #[test]
+    fn test_sub_command_category_lint() {
+        assert_eq!(
+            SubCommand::new("clippy").category(),
+            CommandCategory::Lint
+        );
+        assert_eq!(
+            SubCommand::new("lint").category(),
+            CommandCategory::Lint
+        );
+    }
+
+    #[test]
+    fn test_sub_command_category_test() {
+        assert_eq!(
+            SubCommand::new("test").category(),
+            CommandCategory::Test
+        );
+    }
+
+    #[test]
+    fn test_sub_command_category_audit() {
+        assert_eq!(
+            SubCommand::new("audit").category(),
+            CommandCategory::Audit
+        );
+    }
+
+    #[test]
+    fn test_sub_command_category_build() {
+        assert_eq!(
+            SubCommand::new("build").category(),
+            CommandCategory::Build
+        );
+        assert_eq!(
+            SubCommand::new("compile").category(),
+            CommandCategory::Build
+        );
+    }
+
+    #[test]
+    fn test_sub_command_category_format() {
+        assert_eq!(
+            SubCommand::new("fmt").category(),
+            CommandCategory::Format
+        );
+        assert_eq!(
+            SubCommand::new("format").category(),
+            CommandCategory::Format
+        );
+    }
+
+    #[test]
+    fn test_sub_command_category_custom() {
+        assert_eq!(
+            SubCommand::new("run").category(),
+            CommandCategory::Custom
+        );
+        assert_eq!(
+            SubCommand::new("clean").category(),
+            CommandCategory::Custom
+        );
+    }
+
+    #[test]
+    fn test_sub_command_is_custom() {
+        // Fixed: is_custom now returns true only for CommandCategory::Custom
+        assert!(SubCommand::new("run").is_custom());
+        assert!(SubCommand::new("clean").is_custom());
+        assert!(!SubCommand::new("check").is_custom());
+        assert!(!SubCommand::new("test").is_custom());
+        assert!(!SubCommand::new("build").is_custom());
+        assert!(!SubCommand::new("clippy").is_custom());
+        assert!(!SubCommand::new("audit").is_custom());
+        assert!(!SubCommand::new("fmt").is_custom());
+    }
+
+    #[test]
+    fn test_sub_command_from_str_valid() {
+        let cmd: SubCommand = "check".parse().unwrap();
+        assert_eq!(cmd.as_str(), "check");
+    }
+
+    #[test]
+    fn test_sub_command_from_str_empty() {
+        let result: Result<SubCommand, String> = "  ".parse();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    // ── ReportFormat ────────────────────────────────────────────────
+
+    #[test]
+    fn test_report_format_extension() {
+        assert_eq!(ReportFormat::Markdown.extension(), "md");
+        assert_eq!(ReportFormat::Json.extension(), "json");
+        assert_eq!(ReportFormat::Html.extension(), "html");
+        assert_eq!(ReportFormat::Raw.extension(), "txt");
+        assert_eq!(ReportFormat::RawJson.extension(), "jsonl");
+    }
+
+    #[test]
+    fn test_report_format_is_raw() {
+        assert!(ReportFormat::Raw.is_raw());
+        assert!(ReportFormat::RawJson.is_raw());
+        assert!(!ReportFormat::Markdown.is_raw());
+        assert!(!ReportFormat::Json.is_raw());
+        assert!(!ReportFormat::Html.is_raw());
+    }
+
+    #[test]
+    fn test_report_format_from_str_valid() {
+        assert_eq!("markdown".parse::<ReportFormat>().unwrap(), ReportFormat::Markdown);
+        assert_eq!("md".parse::<ReportFormat>().unwrap(), ReportFormat::Markdown);
+        assert_eq!("json".parse::<ReportFormat>().unwrap(), ReportFormat::Json);
+        assert_eq!("html".parse::<ReportFormat>().unwrap(), ReportFormat::Html);
+        assert_eq!("raw".parse::<ReportFormat>().unwrap(), ReportFormat::Raw);
+        assert_eq!("raw-json".parse::<ReportFormat>().unwrap(), ReportFormat::RawJson);
+        assert_eq!("raw_json".parse::<ReportFormat>().unwrap(), ReportFormat::RawJson);
+    }
+
+    #[test]
+    fn test_report_format_from_str_invalid() {
+        let result: Result<ReportFormat, String> = "unknown".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_report_format_default() {
+        let fmt: ReportFormat = Default::default();
+        assert_eq!(fmt, ReportFormat::Markdown);
+    }
+
+    // ── Verbosity ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_verbosity_is_minimal() {
+        assert!(Verbosity::Minimal.is_minimal());
+        assert!(!Verbosity::Normal.is_minimal());
+        assert!(!Verbosity::Verbose.is_minimal());
+    }
+
+    #[test]
+    fn test_verbosity_is_verbose() {
+        assert!(!Verbosity::Minimal.is_verbose());
+        assert!(!Verbosity::Normal.is_verbose());
+        assert!(Verbosity::Verbose.is_verbose());
+    }
+
+    #[test]
+    fn test_verbosity_default() {
+        let v: Verbosity = Default::default();
+        assert_eq!(v, Verbosity::Normal);
+    }
+
+    // ── IssueLevel Display ──────────────────────────────────────────
+
+    #[test]
+    fn test_issue_level_display() {
+        assert_eq!(IssueLevel::Error.to_string(), "error");
+        assert_eq!(IssueLevel::Warning.to_string(), "warning");
+        assert_eq!(IssueLevel::Info.to_string(), "info");
+        assert_eq!(IssueLevel::Hint.to_string(), "hint");
+    }
+
+    // ── AnalyzeOptions from_config ───────────────────────────────────
+
+    #[test]
+    fn test_analyze_options_from_config_default_format() {
+        let config = crate::config::AppConfig::default();
+        let opts = AnalyzeOptions::from_config(&config);
+        assert_eq!(opts.report_format, ReportFormat::Markdown);
+        assert_eq!(opts.verbosity, Verbosity::Normal);
+        assert!(opts.strip_ansi);
+    }
+
+    #[test]
+    fn test_analyze_options_from_config_json_format() {
+        let mut config = crate::config::AppConfig::default();
+        config.report.format = "json".to_string();
+        let opts = AnalyzeOptions::from_config(&config);
+        assert_eq!(opts.report_format, ReportFormat::Json);
+    }
+
+    #[test]
+    fn test_analyze_options_from_config_verbose() {
+        let mut config = crate::config::AppConfig::default();
+        config.report.verbosity = "verbose".to_string();
+        let opts = AnalyzeOptions::from_config(&config);
+        assert_eq!(opts.verbosity, Verbosity::Verbose);
+    }
+
+    #[test]
+    fn test_analyze_options_from_config_minimal() {
+        let mut config = crate::config::AppConfig::default();
+        config.report.verbosity = "minimal".to_string();
+        let opts = AnalyzeOptions::from_config(&config);
+        assert_eq!(opts.verbosity, Verbosity::Minimal);
     }
 }

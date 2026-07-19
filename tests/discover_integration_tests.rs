@@ -112,6 +112,24 @@ fn test_cargo_fmt() {
 }
 
 #[test]
+fn test_cargo_nextest_run() {
+    let r = assert_classified_as("cargo nextest run", "cargo");
+    assert_subcommand(&r, "nextest run");
+}
+
+#[test]
+fn test_cargo_nextest_list() {
+    let r = assert_classified_as("cargo nextest list", "cargo");
+    assert_subcommand(&r, "nextest list");
+}
+
+#[test]
+fn test_cargo_nextest_archive() {
+    let r = assert_classified_as("cargo nextest archive", "cargo");
+    assert_subcommand(&r, "nextest archive");
+}
+
+#[test]
 fn test_cargo_with_env_prefix() {
     let r = assert_classified_as("RUST_BACKTRACE=1 CARGO_INCREMENTAL=0 cargo test", "cargo");
     assert_subcommand(&r, "test");
@@ -156,8 +174,9 @@ fn test_npm_audit() {
 fn test_npm_custom_script() {
     // "npm run build" doesn't match lint|typecheck|audit|test, falls through to catch-all
     let r = assert_classified_as("npm run build", "npm");
-    // The fallback rule template "run {1}" with {1}=captured "run" produces "run run"
-    assert_subcommand(&r, "run run");
+    // The fallback rule pattern "^npm\s+(?:run\s+)?(\S+)" with template "run {1}"
+    // captures "build" as group 1, producing "run build"
+    assert_subcommand(&r, "run build");
 }
 
 #[test]
@@ -172,21 +191,27 @@ fn test_npm_custom_fallback() {
 
 #[test]
 fn test_pnpm_run_lint() {
-    // pnpm template is "{0}" (full match), returns the entire matched command
+    // pnpm template is "{2}", extracts the subcommand without the "pnpm" prefix
     let r = assert_classified_as("pnpm run lint", "pnpm");
-    assert_subcommand(&r, "pnpm run lint");
+    assert_subcommand(&r, "lint");
 }
 
 #[test]
 fn test_pnpm_typecheck() {
     let r = assert_classified_as("pnpm run typecheck", "pnpm");
-    assert_subcommand(&r, "pnpm run typecheck");
+    assert_subcommand(&r, "typecheck");
 }
 
 #[test]
 fn test_pnpm_exec_tsc() {
     let r = assert_classified_as("pnpm exec tsc", "pnpm");
-    assert_subcommand(&r, "pnpm exec tsc");
+    assert_subcommand(&r, "exec tsc");
+}
+
+#[test]
+fn test_pnpm_audit() {
+    let r = assert_classified_as("pnpm audit", "pnpm");
+    assert_subcommand(&r, "audit");
 }
 
 // ============================================================================
@@ -212,14 +237,13 @@ fn test_yarn_test() {
 #[test]
 fn test_mypy_basic() {
     let r = assert_classified_as("mypy src/", "mypy");
-    assert_subcommand(&r, "mypy");
-    assert_extra_args(&r, &["src/"]);
+    assert_subcommand(&r, "src/");
 }
 
 #[test]
 fn test_mypy_strict() {
     let r = assert_classified_as("mypy --strict --ignore-missing-imports src/", "mypy");
-    assert_subcommand(&r, "mypy");
+    assert_subcommand(&r, "--strict --ignore-missing-imports src/");
 }
 
 // ============================================================================
@@ -235,8 +259,34 @@ fn test_pytest_basic() {
 #[test]
 fn test_pytest_verbose() {
     let r = assert_classified_as("pytest -v -x tests/", "pytest");
-    assert_subcommand(&r, "pytest");
-    assert_extra_args(&r, &["-v", "-x", "tests/"]);
+    assert_subcommand(&r, "-v -x tests/");
+}
+
+// ============================================================================
+// Python / Ruff
+// ============================================================================
+
+#[test]
+fn test_ruff_check() {
+    let r = assert_classified_as("ruff check src/", "ruff");
+    assert_subcommand(&r, "check");
+    assert_extra_args(&r, &["src/"]);
+}
+
+#[test]
+fn test_ruff_format() {
+    let r = assert_classified_as("ruff format src/", "ruff");
+    assert_subcommand(&r, "format");
+}
+
+// ============================================================================
+// Python / Black
+// ============================================================================
+
+#[test]
+fn test_black_basic() {
+    let r = assert_classified_as("black src/", "black");
+    assert_subcommand(&r, "src/");
 }
 
 // ============================================================================
@@ -265,6 +315,13 @@ fn test_go_vet() {
 fn test_golangci_lint() {
     let r = assert_classified_as("golangci-lint run --timeout=5m", "golangci-lint");
     assert_subcommand(&r, "run");
+}
+
+#[test]
+fn test_gofmt() {
+    let r = assert_classified_as("gofmt -l src/", "go");
+    assert_subcommand(&r, "fmt");
+    assert_extra_args(&r, &["-l", "src/"]);
 }
 
 // ============================================================================
@@ -352,19 +409,19 @@ fn test_rubocop() {
 #[test]
 fn test_rubocop_with_args() {
     let r = assert_classified_as("rubocop --auto-correct app/", "rubocop");
-    assert_subcommand(&r, "rubocop");
+    assert_subcommand(&r, "--auto-correct app/");
 }
 
 #[test]
 fn test_rspec_basic() {
     let r = assert_classified_as("rspec spec/", "rspec");
-    assert_subcommand(&r, "rspec");
+    assert_subcommand(&r, "spec/");
 }
 
 #[test]
 fn test_rspec_bundle_exec() {
     let r = assert_classified_as("bundle exec rspec spec/models/", "rspec");
-    assert_subcommand(&r, "rspec");
+    assert_subcommand(&r, "spec/models/");
 }
 
 // ============================================================================
@@ -510,8 +567,8 @@ fn test_rewrite_pytest() {
     assert!(result.is_some());
     let (ts, sub, extra) = result.unwrap();
     assert_eq!(ts.as_str(), "pytest");
-    assert_eq!(sub, "pytest");
-    assert_eq!(extra, vec!["-v"]);
+    assert_eq!(sub, "-v");
+    assert!(extra.is_empty());
 }
 
 #[test]

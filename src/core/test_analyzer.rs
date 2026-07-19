@@ -149,3 +149,105 @@ pub trait TestAnalyzer: Send + Sync {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::{AnalysisResult, Issue, IssueLevel, Location, SubCommand, TestCase, TestStatus, TestSummary};
+
+    #[test]
+    fn test_test_options_from_analyze_options_with_subcommand() {
+        let analyze_opts = AnalyzeOptions {
+            subcommand: Some(SubCommand::new("test")),
+            ..Default::default()
+        };
+        let test_opts = TestOptions::from(&analyze_opts);
+        assert_eq!(test_opts.command, "test");
+        // All other fields should be default
+        assert!(test_opts.filter.is_none());
+        assert!(!test_opts.lib_only);
+        assert!(test_opts.bin.is_none());
+        assert!(test_opts.test.is_none());
+        assert!(!test_opts.doc_only);
+        assert!(test_opts.package.is_none());
+        assert!(test_opts.timeout.is_none());
+        assert!(!test_opts.race);
+        assert!(!test_opts.coverage);
+        assert!(test_opts.extra_args.is_empty());
+    }
+
+    #[test]
+    fn test_test_options_from_analyze_options_no_subcommand() {
+        let analyze_opts = AnalyzeOptions::default();
+        let test_opts = TestOptions::from(&analyze_opts);
+        assert_eq!(test_opts.command, "");
+    }
+
+    #[test]
+    fn test_test_options_from_analyze_options_with_complex_command() {
+        let analyze_opts = AnalyzeOptions {
+            subcommand: Some(SubCommand::new("test --features integration")),
+            ..Default::default()
+        };
+        let test_opts = TestOptions::from(&analyze_opts);
+        assert_eq!(test_opts.command, "test --features integration");
+    }
+
+    #[test]
+    fn test_parsed_test_output_to_test_analysis_result() {
+        let output = ParsedTestOutput {
+            compile_issues: vec![
+                Issue::new(IssueLevel::Error, "compile error", Location::new("src/main.rs")),
+            ],
+            test_summary: Some(TestSummary {
+                total: 10,
+                passed: 8,
+                failed: 2,
+                ignored: 0,
+                measured: 0,
+                filtered: 0,
+                execution_time: Some(1.5),
+            }),
+            failed_tests: vec![
+                TestCase::new("test_fail", TestStatus::Failed)
+                    .with_failure_details("assertion failed"),
+            ],
+            passed_tests: vec![
+                TestCase::new("test_pass", TestStatus::Passed),
+            ],
+            ignored_tests: vec![],
+        };
+
+        let result: TestAnalysisResult = output.into();
+        assert_eq!(result.compile_result.total_issues, 1);
+        assert!(result.has_test_output);
+        assert_eq!(result.failed_tests.len(), 1);
+        assert_eq!(result.passed_tests.len(), 1);
+        assert!(result.ignored_tests.is_empty());
+        assert_eq!(result.test_summary.as_ref().unwrap().total, 10);
+        assert_eq!(result.total_tests(), 2);
+        assert!(!result.all_passed());
+    }
+
+    #[test]
+    fn test_parsed_test_output_empty() {
+        let output = ParsedTestOutput::new();
+        let result: TestAnalysisResult = output.into();
+        assert_eq!(result.compile_result.total_issues, 0);
+        assert!(result.has_test_output);
+        assert!(result.test_summary.is_none());
+        assert!(result.failed_tests.is_empty());
+        assert!(result.passed_tests.is_empty());
+        assert!(result.ignored_tests.is_empty());
+        assert!(result.all_passed());
+    }
+
+    #[test]
+    fn test_test_analyzer_error_display() {
+        let err = TestAnalyzerError::CommandFailed("timeout".to_string());
+        assert_eq!(err.to_string(), "Test command failed: timeout");
+
+        let err = TestAnalyzerError::NotSupported;
+        assert_eq!(err.to_string(), "Test analysis not supported for this analyzer");
+    }
+}

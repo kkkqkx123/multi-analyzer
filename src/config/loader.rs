@@ -73,3 +73,68 @@ impl Default for ConfigLoader {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_internal_default_when_no_config() {
+        let loader = ConfigLoader::new();
+        // No config path set and no global config exists → returns default
+        let config = loader.load_internal();
+        assert_eq!(config.version, "1.0");
+    }
+
+    #[test]
+    fn test_load_project_finds_and_parses_config() {
+        let dir = std::env::temp_dir().join(format!("analyzer_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let config_path = dir.join("analyzer.toml");
+        let toml_content = r#"
+            [report]
+            format = "json"
+            verbosity = "verbose"
+        "#;
+        std::fs::write(&config_path, toml_content).unwrap();
+
+        let project_config = ConfigLoader::load_project(&dir);
+        assert_eq!(project_config.report.as_ref().unwrap().format, "json");
+        assert_eq!(project_config.report.as_ref().unwrap().verbosity, "verbose");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&config_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_load_project_returns_default_when_no_config() {
+        let dir = std::env::temp_dir().join(format!("analyzer_test_empty_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let project_config = ConfigLoader::load_project(&dir);
+        assert!(project_config.report.is_none());
+
+        // Cleanup
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_load_project_parses_hidden_config() {
+        let dir = std::env::temp_dir().join(format!("analyzer_test_hidden_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let config_path = dir.join(".analyzer.toml");
+        let toml_content = r#"
+            [filter]
+            strip_ansi = true
+        "#;
+        std::fs::write(&config_path, toml_content).unwrap();
+
+        let project_config = ConfigLoader::load_project(&dir);
+        assert!(project_config.filter.as_ref().unwrap().strip_ansi);
+
+        // Cleanup
+        let _ = std::fs::remove_file(&config_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+}

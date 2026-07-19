@@ -313,4 +313,70 @@ mod tests {
         assert_eq!(issue.location.line_number, Some(20));
         assert_eq!(issue.location.column_number, Some(10));
     }
+
+    #[test]
+    fn test_parse_maven_issue_line_no_match() {
+        let parser = MavenParser::new();
+        assert!(parser.parse_maven_issue_line("Some random log line").is_none());
+        assert!(parser.parse_maven_issue_line("[INFO] Building project...").is_none());
+    }
+
+    #[test]
+    fn test_parse_via_trait_empty() {
+        let parser = MavenParser::new();
+        let result = parser.parse("");
+        assert!(result.is_full());
+        assert!(result.data().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_via_trait_with_issues() {
+        let parser = MavenParser::new();
+        let output = "[ERROR] /src/Main.java:[10,5] error: cannot find symbol\n\
+                      [WARNING] /src/Util.java:[20,10] warning: [unchecked] unchecked conversion";
+        let result = parser.parse(output);
+        assert!(result.is_full());
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].level, IssueLevel::Error);
+        assert_eq!(issues[1].level, IssueLevel::Warning);
+    }
+
+    #[test]
+    fn test_parse_java_location() {
+        let parser = MavenParser::new();
+        let (file, line, col) = parser.parse_java_location("/path/to/File.java:[10,5]").unwrap();
+        assert_eq!(file, "/path/to/File.java");
+        assert_eq!(line, 10);
+        assert_eq!(col, 5);
+    }
+
+    #[test]
+    fn test_parse_java_location_invalid() {
+        let parser = MavenParser::new();
+        assert!(parser.parse_java_location("no brackets here").is_none());
+        assert!(parser.parse_java_location("/path:[abc]").is_none());
+    }
+
+    #[test]
+    fn test_parse_test_output() {
+        let parser = MavenParser::new();
+        let output = "\
+Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.5 sec
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0
+Running com.example.TestSuite
+    testSomething: FAILURE!
+    expected:<X> but was:<Y>
+Running com.example.OtherTest
+    testOther: FAILURE!
+    NullPointerException";
+        let test_result = parser.parse_test_output(output);
+        assert_eq!(test_result.failed_tests.len(), 2);
+        assert!(test_result.failed_tests[0].name.contains("TestSuite"));
+        assert!(test_result.failed_tests[1].name.contains("OtherTest"));
+        assert!(test_result.test_summary.is_some());
+        let summary = test_result.test_summary.unwrap();
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.failed, 1);
+    }
 }

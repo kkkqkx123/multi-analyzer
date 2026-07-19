@@ -1,53 +1,6 @@
 setup.py:1:1: error: Library stubs not installed for "setuptools"  [import-untyped]
 setup.py:1:1: note: Hint: "python3 -m pip install types-setuptools"
 setup.py:1:1: note: (or run "mypy --install-types" to install all missing stub packages)
-src\main.py:14:18: error: Unsupported operand types for + ("int" and "str")  [operator]
-src\main.py:26:1: error: Function is missing a type annotation  [no-untyped-def]
-src\main.py:40:16: error: Argument 1 to "len" has incompatible type "Optional[str]"; expected "Sized"  [arg-type]
-src\main.py:54:5: error: Function is missing a type annotation  [no-untyped-def]
-src\main.py:62:5: error: Function is missing a return type annotation  [no-untyped-def]
-src\main.py:62:5: note: Use "-> None" if function does not return a value
-src\main.py:90:1: error: Function is missing a return type annotation  [no-untyped-def]
-src\main.py:90:1: note: Use "-> None" if function does not return a value
-src\main.py:93:17: error: Argument 1 to "add_numbers" has incompatible type "str"; expected "int"  [arg-type]
-src\main.py:96:14: error: Incompatible types in assignment (expression has type "int", variable has type "str")  [assignment]
-src\main.py:99:11: error: Name "undefined_variable" is not defined  [name-defined]
-src\utils.py:7:30: error: Missing type parameters for generic type "dict"  [type-arg]
-src\utils.py:9:5: error: Returning Any from function declared to return "dict[Any, Any]"  [no-any-return]
-src\utils.py:41:1: error: Function is missing a type annotation  [no-untyped-def]
-src\utils.py:70:5: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
-src\utils.py:71:9: error: Returning Any from function declared to return "str"  [no-any-return]
-src\utils.py:87:5: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
-src\utils.py:92:1: error: Function is missing a return type annotation  [no-untyped-def]
-src\utils.py:96:20: error: Argument 1 to "append" of "list" has incompatible type "str"; expected "int"  [arg-type]
-src\utils.py:100:14: error: Unsupported operand types for + ("None" and "int")  [operator]
-src\utils.py:100:14: note: Left operand is of type "Optional[int]"
-tests\test_utils.py:3:1: error: Cannot find implementation or library stub for module named "pytest"  [import-not-found]
-tests\test_utils.py:7:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_utils.py:7:1: note: Use "-> None" if function does not return a value
-tests\test_utils.py:14:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_utils.py:14:1: note: Use "-> None" if function does not return a value
-tests\test_utils.py:24:5: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_utils.py:24:5: note: Use "-> None" if function does not return a value
-tests\test_utils.py:28:5: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_utils.py:28:5: note: Use "-> None" if function does not return a value
-tests\test_example.py:3:1: error: Cannot find implementation or library stub for module named "pytest"  [import-not-found]
-tests\test_example.py:3:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
-tests\test_example.py:7:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:7:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:13:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:13:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:19:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:19:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:25:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:25:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:31:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:31:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:37:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:37:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:44:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:44:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:50:1: error: Function is missing a return type annotation  [no-untyped-def]
-tests\test_example.py:50:1: note: Use "-> None" if function does not return a value
-tests\test_example.py:52:12: error: Non-overlapping equality check (left operand type: "Literal[1]", right operand type: "Literal[2]")  [comparison-overlap]
-Found 34 errors in 5 files (checked 7 source files)
+setup.py:1:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+/root/.pyenv/versions/3.14.4/lib/python3.14/site-packages/_pytest/terminal.py:1729:9: error: Pattern matching is only supported in Python 3.10 and greater  [syntax]
+Found 2 errors in 2 files (errors prevented further checking)

@@ -148,6 +148,7 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::project::ProjectAppConfig;
 
     #[test]
     fn test_app_config_default_has_version() {
@@ -160,5 +161,158 @@ mod tests {
         let config = AppConfig::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("version = \"1.0\""));
+    }
+
+    // ── merge_with_project ──────────────────────────────────────────
+
+    #[test]
+    fn test_merge_with_project_report_override() {
+        let global = AppConfig::default();
+        let mut project = ProjectAppConfig::default();
+        project.report = Some(ReportConfig {
+            format: "json".to_string(),
+            ..Default::default()
+        });
+        let merged = global.merge_with_project(&project);
+        assert_eq!(merged.report.format, "json");
+    }
+
+    #[test]
+    fn test_merge_with_project_report_no_override() {
+        let global = AppConfig::default();
+        let project = ProjectAppConfig::default();
+        let merged = global.merge_with_project(&project);
+        assert_eq!(merged.report.format, "markdown");
+    }
+
+    #[test]
+    fn test_merge_with_project_commands_merged() {
+        let mut global = AppConfig::default();
+        global.commands.insert(
+            "global-cmd".to_string(),
+            CommandConfig {
+                exec: "global-exec".to_string(),
+                description: None,
+                tech_stacks: vec![],
+                enabled: true,
+            },
+        );
+        let mut project = ProjectAppConfig::default();
+        let mut project_cmds = std::collections::HashMap::new();
+        project_cmds.insert(
+            "project-cmd".to_string(),
+            CommandConfig {
+                exec: "project-exec".to_string(),
+                description: None,
+                tech_stacks: vec![],
+                enabled: true,
+            },
+        );
+        project.commands = Some(project_cmds);
+        let merged = global.merge_with_project(&project);
+        assert_eq!(merged.commands.len(), 2);
+        assert!(merged.commands.contains_key("global-cmd"));
+        assert!(merged.commands.contains_key("project-cmd"));
+    }
+
+    #[test]
+    fn test_merge_with_project_tech_stacks_merged() {
+        let mut global = AppConfig::default();
+        global.tech_stacks.insert(
+            "npm".to_string(),
+            TechStackConfig {
+                commands: std::collections::HashMap::new(),
+                scripts: std::collections::HashMap::new(),
+                test_framework: None,
+            },
+        );
+        let mut project = ProjectAppConfig::default();
+        let mut project_stacks = std::collections::HashMap::new();
+        project_stacks.insert(
+            "pnpm".to_string(),
+            TechStackConfig {
+                commands: std::collections::HashMap::new(),
+                scripts: std::collections::HashMap::new(),
+                test_framework: Some("vitest".to_string()),
+            },
+        );
+        project.tech_stacks = Some(project_stacks);
+        let merged = global.merge_with_project(&project);
+        assert_eq!(merged.tech_stacks.len(), 2);
+        assert!(merged.tech_stacks.contains_key("npm"));
+        assert!(merged.tech_stacks.contains_key("pnpm"));
+    }
+
+    #[test]
+    fn test_merge_with_project_filter_override() {
+        let global = AppConfig::default();
+        let mut project = ProjectAppConfig::default();
+        project.filter = Some(FilterConfig {
+            strip_ansi: true,
+            ..Default::default()
+        });
+        let merged = global.merge_with_project(&project);
+        assert!(merged.filter.strip_ansi);
+    }
+
+    // ── resolve_script ──────────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_script_exists() {
+        let mut config = AppConfig::default();
+        let mut scripts = std::collections::HashMap::new();
+        scripts.insert("test".to_string(), "jest".to_string());
+        config.tech_stacks.insert(
+            "npm".to_string(),
+            TechStackConfig {
+                commands: std::collections::HashMap::new(),
+                scripts,
+                test_framework: None,
+            },
+        );
+        assert_eq!(config.resolve_script("npm", "test"), Some("jest".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_script_not_exists() {
+        let config = AppConfig::default();
+        assert_eq!(config.resolve_script("npm", "test"), None);
+    }
+
+    #[test]
+    fn test_resolve_script_unknown_stack() {
+        let config = AppConfig::default();
+        assert_eq!(config.resolve_script("unknown", "test"), None);
+    }
+
+    // ── test_framework_for ──────────────────────────────────────────
+
+    #[test]
+    fn test_test_framework_for_exists() {
+        let mut config = AppConfig::default();
+        config.tech_stacks.insert(
+            "pnpm".to_string(),
+            TechStackConfig {
+                commands: std::collections::HashMap::new(),
+                scripts: std::collections::HashMap::new(),
+                test_framework: Some("vitest".to_string()),
+            },
+        );
+        assert_eq!(
+            config.test_framework_for("pnpm"),
+            Some("vitest".to_string())
+        );
+    }
+
+    #[test]
+    fn test_test_framework_for_not_exists() {
+        let config = AppConfig::default();
+        assert_eq!(config.test_framework_for("npm"), None);
+    }
+
+    #[test]
+    fn test_test_framework_for_unknown_stack() {
+        let config = AppConfig::default();
+        assert_eq!(config.test_framework_for("unknown"), None);
     }
 }

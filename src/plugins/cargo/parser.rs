@@ -584,4 +584,264 @@ mod tests {
         assert_eq!(issue.location.line_number, Some(10));
         assert_eq!(issue.location.column_number, Some(5));
     }
+
+    // ── extract_package_from_path ───────────────────────────────────
+
+    #[test]
+    fn test_extract_package_from_path_crates() {
+        let parser = CargoParser::new();
+        assert_eq!(
+            parser.extract_package_from_path("crates/my-crate/src/main.rs"),
+            Some("my-crate".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_package_from_path_packages() {
+        let parser = CargoParser::new();
+        assert_eq!(
+            parser.extract_package_from_path("packages/foo/src/lib.rs"),
+            Some("foo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_package_from_path_members() {
+        let parser = CargoParser::new();
+        assert_eq!(
+            parser.extract_package_from_path("members/bar/src/main.rs"),
+            Some("bar".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_package_from_path_no_match() {
+        let parser = CargoParser::new();
+        assert_eq!(
+            parser.extract_package_from_path("src/main.rs"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_extract_package_from_path_unknown_prefix() {
+        let parser = CargoParser::new();
+        assert_eq!(
+            parser.extract_package_from_path("other/test/src/main.rs"),
+            None
+        );
+    }
+
+    // ── parse_cargo_location ────────────────────────────────────────
+
+    #[test]
+    fn test_parse_cargo_location_standard() {
+        let parser = CargoParser::new();
+        let loc = parser.parse_cargo_location("src/main.rs:10:5").unwrap();
+        assert_eq!(loc.file_path, "src/main.rs");
+        assert_eq!(loc.line_number, Some(10));
+        assert_eq!(loc.column_number, Some(5));
+    }
+
+    #[test]
+    fn test_parse_cargo_location_invalid() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_cargo_location("no colons").is_none());
+    }
+
+    // ── parse_cargo_fmt_line ────────────────────────────────────────
+
+    #[test]
+    fn test_parse_cargo_fmt_reformatting() {
+        let parser = CargoParser::new();
+        let issue = parser.parse_cargo_fmt_line("Reformatting src/main.rs").unwrap();
+        assert_eq!(issue.location.file_path, "src/main.rs");
+        assert_eq!(issue.code, Some("FORMAT".to_string()));
+    }
+
+    #[test]
+    fn test_parse_cargo_fmt_direct_path() {
+        let parser = CargoParser::new();
+        let issue = parser.parse_cargo_fmt_line("src/main.rs").unwrap();
+        assert_eq!(issue.location.file_path, "src/main.rs");
+    }
+
+    #[test]
+    fn test_parse_cargo_fmt_no_match() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_cargo_fmt_line("").is_none());
+        assert!(parser.parse_cargo_fmt_line("  ").is_none());
+    }
+
+    // ── OutputParser trait ──────────────────────────────────────────
+
+    #[test]
+    fn test_parse_via_trait_empty() {
+        let parser = CargoParser::new();
+        let result = parser.parse("");
+        assert!(result.is_full());
+        assert!(result.data().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_parse_via_trait_mixed() {
+        let parser = CargoParser::new();
+        let output = "error: mismatched types\n --> src/main.rs:10:5\n";
+        let result = parser.parse(output);
+        assert!(result.is_full());
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].message, "mismatched types");
+    }
+
+    // ── parse_test_case_line ────────────────────────────────────────
+
+    #[test]
+    fn test_parse_test_case_passed() {
+        let parser = CargoParser::new();
+        let tc = parser.parse_test_case_line("test test_foo ... ok").unwrap();
+        assert_eq!(tc.name, "test_foo");
+        assert_eq!(tc.status, TestStatus::Passed);
+    }
+
+    #[test]
+    fn test_parse_test_case_failed() {
+        let parser = CargoParser::new();
+        let tc = parser.parse_test_case_line("test test_bar ... FAILED").unwrap();
+        assert_eq!(tc.name, "test_bar");
+        assert_eq!(tc.status, TestStatus::Failed);
+    }
+
+    #[test]
+    fn test_parse_test_case_ignored() {
+        let parser = CargoParser::new();
+        let tc = parser.parse_test_case_line("test test_baz ... ignored").unwrap();
+        assert_eq!(tc.name, "test_baz");
+        assert_eq!(tc.status, TestStatus::Ignored(None));
+    }
+
+    #[test]
+    fn test_parse_test_case_no_match() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_test_case_line("running 1 test").is_none());
+    }
+
+    // ── parse_panic_location ────────────────────────────────────────
+
+    #[test]
+    fn test_parse_panic_location() {
+        let parser = CargoParser::new();
+        let detail = "panicked at src/main.rs:42:5: assertion failed";
+        let loc = parser.parse_panic_location(detail).unwrap();
+        assert_eq!(loc.file_path, "src/main.rs");
+        assert_eq!(loc.line_number, Some(42));
+        assert_eq!(loc.column_number, Some(5));
+    }
+
+    #[test]
+    fn test_parse_panic_location_no_match() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_panic_location("no panic here").is_none());
+    }
+
+    // ── parse_test_summary ──────────────────────────────────────────
+
+    #[test]
+    fn test_parse_test_summary_ok() {
+        let parser = CargoParser::new();
+        let summary = parser
+            .parse_test_summary("test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out")
+            .unwrap();
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.passed, 5);
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[test]
+    fn test_parse_test_summary_failed() {
+        let parser = CargoParser::new();
+        let summary = parser
+            .parse_test_summary("test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out")
+            .unwrap();
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.passed, 3);
+        assert_eq!(summary.failed, 2);
+    }
+
+    #[test]
+    fn test_parse_test_summary_no_match() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_test_summary("random line").is_none());
+    }
+
+    // ── is_nextest_output ───────────────────────────────────────────
+
+    #[test]
+    fn test_is_nextest_output_true() {
+        let lines = vec!["PASS [   0.002s] crate::test_foo", "FAIL [   0.001s] crate::test_bar"];
+        assert!(is_nextest_output(&lines));
+    }
+
+    #[test]
+    fn test_is_nextest_output_false() {
+        let lines = vec!["running 1 test", "test test_foo ... ok"];
+        assert!(!is_nextest_output(&lines));
+    }
+
+    #[test]
+    fn test_is_nextest_output_empty() {
+        assert!(!is_nextest_output(&[]));
+    }
+
+    // ── parse_nextest_test_case_line ────────────────────────────────
+
+    #[test]
+    fn test_parse_nextest_test_case_passed() {
+        let parser = CargoParser::new();
+        let tc = parser.parse_nextest_test_case_line("PASS [   0.002s] crate::test_foo").unwrap();
+        assert_eq!(tc.name, "crate::test_foo");
+        assert_eq!(tc.status, TestStatus::Passed);
+    }
+
+    #[test]
+    fn test_parse_nextest_test_case_failed() {
+        let parser = CargoParser::new();
+        let tc = parser.parse_nextest_test_case_line("FAIL [   0.001s] crate::test_bar").unwrap();
+        assert_eq!(tc.name, "crate::test_bar");
+        assert_eq!(tc.status, TestStatus::Failed);
+    }
+
+    #[test]
+    fn test_parse_nextest_test_case_skipped() {
+        let parser = CargoParser::new();
+        let tc = parser.parse_nextest_test_case_line("SKIP [   0.000s] crate::test_baz").unwrap();
+        assert_eq!(tc.name, "crate::test_baz");
+        assert_eq!(tc.status, TestStatus::Ignored(None));
+    }
+
+    #[test]
+    fn test_parse_nextest_test_case_no_match() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_nextest_test_case_line("random line").is_none());
+    }
+
+    // ── parse_nextest_summary ───────────────────────────────────────
+
+    #[test]
+    fn test_parse_nextest_summary() {
+        let parser = CargoParser::new();
+        let summary = parser
+            .parse_nextest_summary("     Summary [   0.003s] 5 tests run: 3 passed, 2 failed, 0 skipped")
+            .unwrap();
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.passed, 3);
+        assert_eq!(summary.failed, 2);
+        assert_eq!(summary.ignored, 0);
+    }
+
+    #[test]
+    fn test_parse_nextest_summary_no_match() {
+        let parser = CargoParser::new();
+        assert!(parser.parse_nextest_summary("random line").is_none());
+    }
 }
