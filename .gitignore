@@ -4,3 +4,8 @@ target
 **.lock
 .mypy_cache
 .translator
+
+# Fixture temp files
+tests/data/fixtures/**/.gradle/
+tests/data/fixtures/**/build/
+tests/data/fixtures/**/__pycache__/
