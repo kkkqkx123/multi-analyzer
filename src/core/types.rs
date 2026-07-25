@@ -102,6 +102,10 @@ pub struct AnalysisResult {
     pub issues_by_package: HashMap<String, Vec<Issue>>,
     pub issues_by_code: HashMap<String, usize>,
     pub unique_patterns: HashSet<String>,
+    /// Command exit code (None if not executed)
+    pub exit_code: Option<i32>,
+    /// Whether the command failed (non-zero exit or execution error)
+    pub command_failed: bool,
 }
 
 impl AnalysisResult {

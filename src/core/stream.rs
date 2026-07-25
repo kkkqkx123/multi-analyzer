@@ -14,7 +14,7 @@ use crate::core::analyzer::AnalyzerError;
 use crate::core::command::CommandBuilder;
 use crate::core::parser::{OutputParser, ParseResult};
 use crate::core::tracking::TimingGuard;
-use crate::core::types::{AnalysisResult, AnalyzeOptions};
+use crate::core::types::{AnalysisResult, AnalyzeOptions, Issue, IssueLevel, Location};
 use crate::core::utils::OutputPostProcessor;
 
 fn filter_registry() -> &'static FilterRegistry {
@@ -48,9 +48,14 @@ pub fn run_analyzer(
 
     if options.report_format.is_raw() {
         let result = builder.execute_streaming(FilterMode::Passthrough)?;
+        let exit_code = result.exit_code;
+        let success = exit_code == 0;
         guard.set_output_bytes(0);
-        guard.complete(Some(result.exit_code), 0, true);
-        return Ok(AnalysisResult::new());
+        guard.complete(Some(exit_code), 0, success);
+        let mut analysis = AnalysisResult::new();
+        analysis.exit_code = Some(exit_code);
+        analysis.command_failed = !success;
+        return Ok(analysis);
     }
 
     let processor = resolve_processor(builder, options);
@@ -73,14 +78,31 @@ pub fn run_analyzer(
         tee_writer::tee_raw(&raw_for_tee, &command_str, exit_code);
     }
 
+    let command_success = exit_code == 0;
     match parse_and_analyze(parser, &result.filtered, options) {
-        StageResult::Complete(r) => {
-            guard.complete(Some(exit_code), r.total_issues, true);
+        StageResult::Complete(mut r) => {
+            r.exit_code = Some(exit_code);
+            r.command_failed = !command_success;
+            // Fallback: command failed but no issues parsed → surface raw output
+            if !command_success && r.total_issues == 0 {
+                let raw = if let Some(ref out) = result.raw_stdout {
+                    format!("Command failed (exit code {}). Raw output:\n{}", exit_code, out)
+                } else {
+                    format!("Command failed (exit code {}). No output captured.", exit_code)
+                };
+                r.add_issue(Issue::new(
+                    IssueLevel::Error,
+                    raw,
+                    Location::new("unknown"),
+                ));
+            }
+            guard.complete(Some(exit_code), r.total_issues, command_success);
             Ok(r)
         }
         StageResult::Failed(w) => {
             let issue_count = 0;
             guard.complete(Some(exit_code), issue_count, false);
+            // Always set command_failed when parser fails
             Err(AnalyzerError::ParseError(w.join("; ")))
         }
     }

@@ -103,9 +103,10 @@ pub const NODE_RULES: &[CommandRule] = &[
         category: "Node.js",
     },
     CommandRule {
-        pattern: r"^pnpm\s+(run\s+)?(lint|typecheck|audit|test|exec\s+tsc)",
+        // Generic: pnpm [any flags/args] [run] <subcommand>
+        pattern: r"^pnpm\s+(?:\S+\s+)*(?:run\s+)?(lint|typecheck|audit|test|exec\s+tsc)",
         tech_stack: TechStack::Pnpm,
-        subcommand_template: "{2}",
+        subcommand_template: "{1}",
         prefixes: &["pnpm"],
         category: "Node.js",
     },
@@ -315,9 +316,10 @@ pub const RULES: &[CommandRule] = &[
         category: "Node.js",
     },
     CommandRule {
-        pattern: r"^pnpm\s+(run\s+)?(lint|typecheck|audit|test|exec\s+tsc)",
+        // Generic: pnpm [any flags/args] [run] <subcommand>
+        pattern: r"^pnpm\s+(?:\S+\s+)*(?:run\s+)?(lint|typecheck|audit|test|exec\s+tsc)",
         tech_stack: TechStack::Pnpm,
-        subcommand_template: "{2}",
+        subcommand_template: "{1}",
         prefixes: &["pnpm"],
         category: "Node.js",
     },

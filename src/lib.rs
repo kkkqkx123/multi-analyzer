@@ -13,5 +13,4 @@ pub use core::{
     IssueLevel, Location, OutputParser, ReportFormat, SubCommand,
 };
 
-pub use discover::rewrite_command;
-pub use discover::split_on_operators;
+pub use discover::print_rules_stats;

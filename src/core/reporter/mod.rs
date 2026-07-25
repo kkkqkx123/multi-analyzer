@@ -70,13 +70,6 @@ pub trait Reporter: Send + Sync {
         result: &AnalysisResult,
         options: ReportOptions,
     ) -> Result<String, ReporterError> {
-        // Success short-circuit: if no issues found and short-circuit is enabled,
-        // output a single-line confirmation instead of full report
-        if options.success_short_circuit && result.total_issues == 0 {
-            if let Some(msg) = options.short_circuit_message() {
-                return Ok(msg);
-            }
-        }
         // Default implementation ignores options for backward compatibility
         let _ = options;
         self.generate(result)

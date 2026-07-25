@@ -13,16 +13,6 @@ pub mod lexer;
 pub mod registry;
 pub mod rules;
 
-pub use lexer::split_on_operators;
-// Only `classify_command_with_config` and `rewrite_command_with_config` are used
-// in main.rs; `classify_command` and `rewrite_command` are kept for lib.rs re-exports
-// and backward-compatible tests.
-#[allow(unused_imports)]
-pub use registry::{
-    classify_command, classify_command_with_config, rewrite_command, rewrite_command_with_config,
-    Classification,
-};
-
 pub fn print_rules_stats() {
     println!();
     println!("--- Discover Engine ---");

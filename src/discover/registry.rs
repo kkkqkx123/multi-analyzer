@@ -37,10 +37,7 @@ pub enum Classification {
         rule_index: usize,
     },
     /// No rule matched this command
-    Unmatched {
-        /// The base command (first word)
-        base_command: String,
-    },
+    Unmatched,
 }
 
 impl Classification {
@@ -161,17 +158,6 @@ pub fn classify_command(raw_cmd: &str) -> Classification {
     classify_command_inner(raw_cmd, None)
 }
 
-/// Classify a raw shell command with config-defined command overrides.
-///
-/// This is the primary entry point for the `analyzer run` code path.
-/// Config commands act as a fallback after the static RULES table.
-pub fn classify_command_with_config(
-    raw_cmd: &str,
-    commands: &HashMap<String, CommandConfig>,
-) -> Classification {
-    classify_command_inner(raw_cmd, Some(commands))
-}
-
 fn classify_command_inner(
     raw_cmd: &str,
     commands: Option<&HashMap<String, CommandConfig>>,
@@ -247,9 +233,9 @@ fn classify_command_inner(
         }
     }
 
-    let base = cleaned.split_whitespace().next().unwrap_or("").to_string();
+    let _base = cleaned.split_whitespace().next().unwrap_or("").to_string();
 
-    Classification::Unmatched { base_command: base }
+    Classification::Unmatched
 }
 
 /// Fill {1}, {2}, ... capture group references in a template string.
@@ -287,25 +273,11 @@ pub fn rewrite_command(raw_cmd: &str) -> Option<(TechStack, String, Vec<String>)
             extra_args,
             ..
         } => Some((tech_stack, subcommand, extra_args)),
-        Classification::Unmatched { .. } => None,
+        Classification::Unmatched => None,
     }
 }
 
-/// Rewrite with config-defined command overrides as fallback.
-pub fn rewrite_command_with_config(
-    raw_cmd: &str,
-    commands: &HashMap<String, CommandConfig>,
-) -> Option<(TechStack, String, Vec<String>)> {
-    match classify_command_with_config(raw_cmd, commands) {
-        Classification::Matched {
-            tech_stack,
-            subcommand,
-            extra_args,
-            ..
-        } => Some((tech_stack, subcommand, extra_args)),
-        Classification::Unmatched { .. } => None,
-    }
-}
+/// Nothing after rewrite_command_with_config follows — it was removed.
 
 /// Rewrite the first segment of a compound command (up to the first operator).
 ///
@@ -630,7 +602,7 @@ mod tests {
     #[test]
     fn test_classify_unmatched() {
         let result = classify_command("echo hello");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
@@ -899,26 +871,26 @@ mod tests {
     fn test_classify_cargo_alone() {
         // "cargo" alone should not match any rule (no subcommand)
         let result = classify_command("cargo");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
     fn test_classify_ruff_alone() {
         // "ruff" alone should not match (pattern requires subcommand check|format)
         let result = classify_command("ruff");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
     fn test_classify_empty_string() {
         let result = classify_command("");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
     fn test_classify_only_spaces() {
         let result = classify_command("   ");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
@@ -940,14 +912,14 @@ mod tests {
     fn test_classify_gcc_linking() {
         // gcc without -c flag should NOT match the compile rule
         let result = classify_command("gcc -o output main.c");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
     fn test_classify_clang_linking() {
         // clang without -c flag should NOT match the compile rule
         let result = classify_command("clang -o output main.c");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
@@ -1109,7 +1081,7 @@ mod tests {
         // The command stays as "-DFOO=bar gcc -c src.c", which doesn't start with gcc/g++
         // so it should be Unmatched (the GCC rule requires the command to start with gcc/g++)
         let result = classify_command("-DFOO=bar gcc -c src.c");
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     // ============================================================================
@@ -1163,7 +1135,7 @@ mod tests {
         );
         // Disabled command should not match, fall through to unmatched
         let result = classify_command_with_config("my-tool --verbose", &commands);
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]
@@ -1196,7 +1168,7 @@ mod tests {
         );
         let result = classify_command_with_config("my-tool", &commands);
         // No tech_stacks means config fallback can't determine the tech stack
-        assert!(matches!(result, Classification::Unmatched { .. }));
+        assert!(matches!(result, Classification::Unmatched));
     }
 
     #[test]

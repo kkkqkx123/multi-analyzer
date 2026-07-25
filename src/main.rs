@@ -7,7 +7,6 @@
 //!   analyzer npm "run typecheck"
 //!   analyzer pnpm "exec tsc --noEmit"
 
-use std::collections::HashSet;
 use std::env;
 use std::path::Path;
 
@@ -20,60 +19,6 @@ use core::{
     AnalysisResult, AnalyzeOptions, ReporterFactory, SubCommand, TechStack, TestOptions, Verbosity,
 };
 
-/// Known analyzer flags that can appear after the command in `analyzer run` mode.
-/// Any argument matching these flags is treated as an analyzer option rather than
-/// part of the command to execute.
-fn is_known_analyzer_flag(arg: &str) -> bool {
-    let known_flags: HashSet<&str> = [
-        "--help",
-        "-h",
-        "--version",
-        "-v",
-        "--filter-warnings",
-        "--verbose",
-        "--quiet",
-        "-q",
-        "--stdout",
-        "--filter-paths",
-        "--output",
-        "-o",
-        "--format",
-        "--workspace",
-        "--package",
-        "-p",
-        "--exclude",
-        "--lib",
-        "--bin",
-        "--bins",
-        "--test",
-        "--tests",
-        "--example",
-        "--examples",
-        "--bench",
-        "--benches",
-        "--all-targets",
-        "--features",
-        "--all-features",
-        "--no-default-features",
-        "--no-short-circuit",
-        "--max-issues",
-        "--source-dir",
-        "--build-dir",
-        "--cmake-generator",
-        "--target",
-        "--target-files",
-        "-I",
-        "--include-path",
-        "-D",
-        "--define",
-        "--cpp-std",
-    ]
-    .into_iter()
-    .collect();
-
-    known_flags.contains(arg)
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -82,19 +27,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    // --- Rewrite subcommand ---
-    if args[1] == "rewrite" {
-        handle_rewrite(&args);
-        return;
-    }
-
-    // --- Run subcommand ---
-    if args[1] == "run" {
-        handle_run(&args);
-        return;
-    }
-
-    // --- Config subcommand ---
     if args[1] == "config" {
         handle_config(&args);
         return;
@@ -111,131 +43,6 @@ fn main() {
 
     // Parse arguments (CLI overrides config)
     let (tech_stack, options) = parse_arguments(&args, &config);
-
-    run_orchestrator(tech_stack, options, &config);
-}
-
-fn handle_rewrite(args: &[String]) {
-    let raw_cmd = args[2..].join(" ");
-    if raw_cmd.trim().is_empty() {
-        eprintln!("Error: no command provided for rewrite");
-        eprintln!("Usage: analyzer rewrite <raw_shell_command>");
-        eprintln!();
-        eprintln!("The <raw_shell_command> must be a build tool command (e.g. \"cargo check\", \"npm run lint\").");
-        eprintln!("Shell builtins like `cd`, `ls`, `echo` are not supported.");
-        std::process::exit(1);
-    }
-
-    // Split compound commands (&&, ||, ;, |, &) and only rewrite the first segment
-    let segments = discover::split_on_operators(raw_cmd.trim());
-    let cmd_to_rewrite = match segments.len() {
-        0 => {
-            eprintln!("Error: no command provided for rewrite");
-            std::process::exit(1);
-        }
-        1 => segments[0].clone(),
-        n => {
-            eprintln!(
-                "Note: Compound command detected ({} segments). Only the first segment will be rewritten.",
-                n
-            );
-            segments[0].clone()
-        }
-    };
-
-    // Load config to resolve command aliases
-    let config = config::ConfigLoader::new().load();
-    match discover::rewrite_command_with_config(&cmd_to_rewrite, &config.commands) {
-        Some((tech_stack, subcommand, extra_args)) => {
-            print!("analyzer {} \"{}\"", tech_stack.as_str(), subcommand);
-            for arg in &extra_args {
-                print!(" {}", arg);
-            }
-            println!();
-            std::process::exit(0);
-        }
-        None => {
-            eprintln!("Error: unable to rewrite '{}'", cmd_to_rewrite);
-            eprintln!("The command must be a supported build tool command.");
-            eprintln!("Try running 'analyzer --help' for a list of supported tech stacks and commands.");
-            eprintln!("Alternatively, use 'analyzer run \"{}\"' to run the command directly.", cmd_to_rewrite);
-            std::process::exit(1);
-        }
-    }
-}
-
-fn handle_run(args: &[String]) {
-    if args.len() < 3 {
-        eprintln!("Error: no command provided for run");
-        eprintln!("Usage: analyzer run <raw_shell_command> [options]");
-        std::process::exit(1);
-    }
-
-    let mut raw_cmd_parts: Vec<String> = Vec::new();
-    let mut flag_start = args.len();
-
-    for (i, arg) in args.iter().enumerate().skip(2) {
-        if is_known_analyzer_flag(arg) {
-            flag_start = i;
-            break;
-        }
-        raw_cmd_parts.push(arg.clone());
-    }
-
-    let raw_cmd = raw_cmd_parts.join(" ");
-    if raw_cmd.trim().is_empty() {
-        eprintln!("Error: no command provided for run");
-        std::process::exit(1);
-    }
-
-    // Load config early so we can use command aliases during classification
-    let config = config::ConfigLoader::new().load();
-
-    // Split compound commands (&&, ||, ;, |, &) and only analyze the first segment
-    let segments = discover::split_on_operators(raw_cmd.trim());
-    let cmd_to_classify = match segments.len() {
-        0 => {
-            eprintln!("Error: no command provided for run");
-            std::process::exit(1);
-        }
-        1 => segments[0].clone(),
-        n => {
-            eprintln!(
-                "Note: Compound command detected ({} segments). Only the first segment '{}' will be analyzed.",
-                n, segments[0]
-            );
-            segments[0].clone()
-        }
-    };
-
-    let (tech_stack, subcommand, extra_args) =
-        match discover::classify_command_with_config(&cmd_to_classify, &config.commands) {
-            discover::Classification::Matched {
-                tech_stack,
-                subcommand,
-                extra_args,
-                ..
-            } => (tech_stack, subcommand, extra_args),
-            discover::Classification::Unmatched { base_command } => {
-                eprintln!("Error: Unrecognized command '{}'", base_command);
-                eprintln!(
-                    "Try running: analyzer rewrite \"{}\" to check if it's supported",
-                    cmd_to_classify.trim()
-                );
-                std::process::exit(1);
-            }
-        };
-
-    let full_cmd = if extra_args.is_empty() {
-        subcommand
-    } else {
-        format!("{} {}", subcommand, extra_args.join(" "))
-    };
-
-    let mut options = AnalyzeOptions::from_config(&config);
-    options.subcommand = Some(SubCommand::new(full_cmd));
-
-    parse_options_from_args(args, flag_start, &mut options);
 
     run_orchestrator(tech_stack, options, &config);
 }
@@ -288,199 +95,6 @@ fn handle_stats(args: &[String]) {
         println!("{}", tracking_summary);
         println!();
         println!("Usage: analyzer stats [--reset]");
-    }
-}
-
-fn parse_options_from_args(args: &[String], start: usize, options: &mut AnalyzeOptions) {
-    let mut i = start;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--help" | "-h" => {
-                show_help();
-                std::process::exit(0);
-            }
-            "--version" | "-v" => {
-                println!("analyzer 0.2.0");
-                std::process::exit(0);
-            }
-            "--filter-warnings" => {
-                options.filter_warnings = true;
-            }
-            "--verbose" => {
-                options.verbosity = Verbosity::Verbose;
-            }
-            "--quiet" | "-q" => {
-                options.verbosity = Verbosity::Minimal;
-            }
-            "--stdout" => {
-                options.stdout_only = true;
-            }
-            "--filter-paths" => {
-                if i + 1 < args.len() {
-                    options.filter_paths = args[i + 1]
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    i += 1;
-                }
-            }
-            "--output" | "-o" => {
-                if i + 1 < args.len() {
-                    options.output_file = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--format" => {
-                if i + 1 < args.len() {
-                    let format_str = &args[i + 1];
-                    options.report_format = format_str.parse().unwrap_or_else(|e| {
-                        eprintln!("Error: Invalid format '{}': {}", format_str, e);
-                        eprintln!("Supported formats: markdown, json, html, raw, raw-json");
-                        std::process::exit(1);
-                    });
-                    i += 1;
-                }
-            }
-            "--workspace" => {
-                options.workspace = true;
-            }
-            "--package" | "-p" => {
-                if i + 1 < args.len() {
-                    options.package.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--exclude" => {
-                if i + 1 < args.len() {
-                    options.exclude.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--lib" => {
-                options.lib = true;
-            }
-            "--bin" => {
-                if i + 1 < args.len() {
-                    options.bin.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--bins" => {
-                options.bins = true;
-            }
-            "--test" => {
-                if i + 1 < args.len() {
-                    options.test.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--tests" => {
-                options.tests = true;
-            }
-            "--example" => {
-                if i + 1 < args.len() {
-                    options.example.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--examples" => {
-                options.examples = true;
-            }
-            "--bench" => {
-                if i + 1 < args.len() {
-                    options.bench.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--benches" => {
-                options.benches = true;
-            }
-            "--all-targets" => {
-                options.all_targets = true;
-            }
-            "--features" => {
-                if i + 1 < args.len() {
-                    options.features.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--all-features" => {
-                options.all_features = true;
-            }
-            "--no-default-features" => {
-                options.no_default_features = true;
-            }
-            "--no-short-circuit" => {
-                options.success_short_circuit = false;
-            }
-            // === Result Limits ===
-            "--max-issues" => {
-                if i + 1 < args.len() {
-                    let val = args[i + 1].parse::<usize>().unwrap_or_else(|e| {
-                        eprintln!("Error: Invalid --max-issues value '{}': {}", args[i + 1], e);
-                        std::process::exit(1);
-                    });
-                    options.max_issues = Some(val);
-                    i += 1;
-                }
-            }
-            // === C++ Build Options ===
-            "--source-dir" => {
-                if i + 1 < args.len() {
-                    options.source_dir = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--build-dir" => {
-                if i + 1 < args.len() {
-                    options.build_dir = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--cmake-generator" => {
-                if i + 1 < args.len() {
-                    options.cmake_generator = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--target" => {
-                if i + 1 < args.len() {
-                    options.target = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--target-files" => {
-                if i + 1 < args.len() {
-                    options.target_files = args[i + 1]
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    i += 1;
-                }
-            }
-            "-I" | "--include-path" => {
-                if i + 1 < args.len() {
-                    options.include_paths.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "-D" | "--define" => {
-                if i + 1 < args.len() {
-                    options.defines.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--cpp-std" => {
-                if i + 1 < args.len() {
-                    options.cpp_standard = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            _ => {
-                // Unknown args are silently ignored in run mode
-            }
-        }
-        i += 1;
     }
 }
 
@@ -963,23 +577,14 @@ fn show_help() {
     println!();
     println!("Usage:");
     println!("  analyzer <tech-stack> <command> [options]");
-    println!("  analyzer run <raw_shell_command> [options]");
-    println!("  analyzer rewrite <raw_shell_command>");
     println!();
     println!("Subcommands:");
-    println!("  run        Execute any build tool command through the analyzer");
-    println!("  rewrite    Preview the analyzer-equivalent command without executing it");
     println!("  config     Show or initialize configuration");
     println!("  stats      Show analysis tracking statistics");
     println!();
-    println!("Run exit codes:");
-    println!("  0  Success (rewritten and executed successfully)");
-    println!("  1  No matching rule / execution failed");
-    println!("  2  Subcommand not supported");
-    println!();
-    println!("Rewrite exit codes:");
-    println!("  0  Successfully rewritten (command printed to stdout)");
-    println!("  1  No matching rule (nothing printed)");
+    println!("Exit codes:");
+    println!("  0  Success");
+    println!("  1  Execution failed");
     println!();
     println!("Tech Stacks:");
     println!("  cargo         Rust/Cargo projects");
@@ -1025,18 +630,6 @@ fn show_help() {
     println!("  analyzer go \"vet ./...\"");
     println!("  analyzer maven \"compile\"");
     println!("  analyzer gradle \"test\"");
-    println!();
-    println!("Run examples:");
-    println!("  analyzer run \"cargo check --all-targets\"");
-    println!("  analyzer run \"npm run lint\" --format json --stdout");
-    println!("  analyzer run \"pytest -v\"");
-    println!("  analyzer run \"go vet ./...\" --format raw --stdout");
-    println!();
-    println!("Rewrite examples:");
-    println!("  analyzer rewrite \"cargo check --all-targets\"");
-    println!("  analyzer rewrite \"npm run lint\"");
-    println!("  analyzer rewrite \"go vet ./...\"");
-    println!("  analyzer rewrite \"mvn test\"");
     println!();
     println!("Cargo Workspace Options:");
     println!("  --workspace             Analyze all workspace members");
