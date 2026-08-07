@@ -1,7 +1,6 @@
 //! command execution tool
 //! Provides unified command construction and execution functions and supports cross-platform command lookup
 
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -395,7 +394,11 @@ impl CommandBuilder {
                 let mut raw_stdout = String::new();
                 let mut raw_stderr = String::new();
                 let mut filtered = String::new();
-                let collect_raw = self.options.verbose;
+                // Always capture raw stdout/stderr so callers (e.g. the
+                // command-failure fallback in `run_analyzer`) can surface the
+                // underlying error even in non-verbose mode. `verbose` only
+                // controls the "Running: ..." echo, not raw capture.
+                let collect_raw = true;
 
                 for msg in rx {
                     match msg {

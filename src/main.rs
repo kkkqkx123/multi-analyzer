@@ -10,13 +10,16 @@
 use std::env;
 use std::path::Path;
 
-mod config;
-mod core;
-mod discover;
-mod plugins;
-
-use core::{
-    AnalysisResult, AnalyzeOptions, ReporterFactory, SubCommand, TechStack, TestOptions, Verbosity,
+// Reuse the library crate instead of recompiling its modules into the binary.
+// Recompiling via `mod` made every `pub` item a private, "dead" symbol inside
+// the bin, which produced spurious `never used` warnings.
+use analyzer::{
+    config,
+    core::{
+        self, AnalysisResult, AnalyzeOptions, ReporterFactory, SubCommand, TechStack, TestOptions,
+        Verbosity,
+    },
+    plugins,
 };
 
 fn main() {
@@ -94,6 +97,24 @@ fn handle_stats(args: &[String]) {
         println!("Analysis Tracking Statistics:");
         println!("{}", tracking_summary);
         println!();
+        println!("Per-run detail:");
+        for (i, r) in core::tracking::records().iter().enumerate() {
+            let exit = r
+                .exit_code
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "?".to_string());
+            println!(
+                "  [{}] {} | {} | exit={} | {}ms | {} issues | {}",
+                i + 1,
+                r.tech_stack,
+                r.command,
+                exit,
+                r.duration_ms,
+                r.issue_count,
+                if r.success { "ok" } else { "FAILED" }
+            );
+        }
+        println!();
         println!("Usage: analyzer stats [--reset]");
     }
 }
@@ -159,15 +180,269 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
     }
 }
 
+/// Analyzer flags that consume the following argument as their value.
+///
+/// This table and [`SWITCH_FLAGS`] are the single source of truth for CLI flag
+/// metadata. Option parsing and positional-argument extraction both consult
+/// them, which keeps a flag's value from being mistaken for a tech stack or a
+/// build-tool command.
+const VALUE_FLAGS: &[&str] = &[
+    "--filter-paths",
+    "--output",
+    "-o",
+    "--format",
+    "--max-issues",
+    // Cargo workspace / target / feature selection
+    "--package",
+    "-p",
+    "--exclude",
+    "--bin",
+    "--test",
+    "--example",
+    "--bench",
+    "--features",
+    // C++ build options
+    "--source-dir",
+    "--build-dir",
+    "--cmake-generator",
+    "--target",
+    "--target-files",
+    "-I",
+    "--include-path",
+    "-D",
+    "--define",
+    "--cpp-std",
+];
+
+/// Analyzer flags that are standalone switches, taking no value argument.
+const SWITCH_FLAGS: &[&str] = &[
+    "--help",
+    "-h",
+    "--version",
+    "-v",
+    "--filter-warnings",
+    "--verbose",
+    "--quiet",
+    "-q",
+    "--stdout",
+    "--no-short-circuit",
+    // Cargo workspace / target / feature selection
+    "--workspace",
+    "--lib",
+    "--bins",
+    "--tests",
+    "--examples",
+    "--benches",
+    "--all-targets",
+    "--all-features",
+    "--no-default-features",
+];
+
+/// True when `flag` is an option understood by the analyzer itself, as opposed
+/// to an argument destined for the underlying build tool.
+fn is_known_analyzer_flag(flag: &str) -> bool {
+    SWITCH_FLAGS.contains(&flag) || VALUE_FLAGS.contains(&flag)
+}
+
+/// True when `flag` consumes the following argument as its value.
+fn flag_takes_value(flag: &str) -> bool {
+    VALUE_FLAGS.contains(&flag)
+}
+
+/// Populate `options` from the analyzer flags found in `args[start_index..]`.
+///
+/// Positional arguments, unknown flags and build-tool arguments are ignored —
+/// extracting those is the caller's job. `--help` and `--version` are control
+/// flow rather than options and are likewise left to the caller.
+///
+/// This function never terminates the process: malformed values are reported
+/// through the returned list, which keeps it unit-testable.
+fn parse_options_from_args(
+    args: &[String],
+    start_index: usize,
+    options: &mut AnalyzeOptions,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut i = start_index;
+
+    while i < args.len() {
+        let arg = args[i].as_str();
+        // Only value-taking flags look ahead; a missing value is tolerated.
+        let value = if flag_takes_value(arg) {
+            args.get(i + 1)
+        } else {
+            None
+        };
+
+        match arg {
+            // Control flow, handled by the caller.
+            "--help" | "-h" | "--version" | "-v" => {}
+
+            // === General Options ===
+            "--filter-warnings" => options.filter_warnings = true,
+            "--verbose" => options.verbosity = Verbosity::Verbose,
+            "--quiet" | "-q" => options.verbosity = Verbosity::Minimal,
+            "--stdout" => options.stdout_only = true,
+            "--no-short-circuit" => options.success_short_circuit = false,
+            "--filter-paths" => {
+                if let Some(v) = value {
+                    options.filter_paths = v.split(',').map(|s| s.trim().to_string()).collect();
+                }
+            }
+            "--output" | "-o" => {
+                if let Some(v) = value {
+                    options.output_file = Some(v.clone());
+                }
+            }
+            "--format" => {
+                if let Some(v) = value {
+                    match v.parse() {
+                        Ok(format) => options.report_format = format,
+                        Err(e) => errors.push(format!(
+                            "Invalid format '{}': {}\nSupported formats: markdown, json, html, raw, raw-json",
+                            v, e
+                        )),
+                    }
+                }
+            }
+            "--max-issues" => {
+                if let Some(v) = value {
+                    match v.parse::<usize>() {
+                        Ok(n) => options.max_issues = Some(n),
+                        Err(_) => errors.push(format!(
+                            "Invalid value for --max-issues: '{}' (expected a non-negative integer)",
+                            v
+                        )),
+                    }
+                }
+            }
+
+            // === Cargo Workspace Options ===
+            "--workspace" => options.workspace = true,
+            "--package" | "-p" => {
+                if let Some(v) = value {
+                    options.package.push(v.clone());
+                }
+            }
+            "--exclude" => {
+                if let Some(v) = value {
+                    options.exclude.push(v.clone());
+                }
+            }
+
+            // === Cargo Target Options ===
+            "--lib" => options.lib = true,
+            "--bin" => {
+                if let Some(v) = value {
+                    options.bin.push(v.clone());
+                }
+            }
+            "--bins" => options.bins = true,
+            "--test" => {
+                if let Some(v) = value {
+                    options.test.push(v.clone());
+                }
+            }
+            "--tests" => options.tests = true,
+            "--example" => {
+                if let Some(v) = value {
+                    options.example.push(v.clone());
+                }
+            }
+            "--examples" => options.examples = true,
+            "--bench" => {
+                if let Some(v) = value {
+                    options.bench.push(v.clone());
+                }
+            }
+            "--benches" => options.benches = true,
+            "--all-targets" => options.all_targets = true,
+
+            // === Cargo Feature Options ===
+            "--features" => {
+                if let Some(v) = value {
+                    options.features.push(v.clone());
+                }
+            }
+            "--all-features" => options.all_features = true,
+            "--no-default-features" => options.no_default_features = true,
+
+            // === C++ Build Options ===
+            "--source-dir" => {
+                if let Some(v) = value {
+                    options.source_dir = Some(v.clone());
+                }
+            }
+            "--build-dir" => {
+                if let Some(v) = value {
+                    options.build_dir = Some(v.clone());
+                }
+            }
+            "--cmake-generator" => {
+                if let Some(v) = value {
+                    options.cmake_generator = Some(v.clone());
+                }
+            }
+            "--target" => {
+                if let Some(v) = value {
+                    options.target = Some(v.clone());
+                }
+            }
+            "--target-files" => {
+                if let Some(v) = value {
+                    options.target_files = v.split(',').map(|s| s.trim().to_string()).collect();
+                }
+            }
+            "-I" | "--include-path" => {
+                if let Some(v) = value {
+                    options.include_paths.push(v.clone());
+                }
+            }
+            "-D" | "--define" => {
+                if let Some(v) = value {
+                    options.defines.push(v.clone());
+                }
+            }
+            "--cpp-std" => {
+                if let Some(v) = value {
+                    options.cpp_standard = Some(v.clone());
+                }
+            }
+
+            // Positional arguments and build-tool flags are not our concern.
+            _ => {}
+        }
+
+        if value.is_some() {
+            i += 1;
+        }
+        i += 1;
+    }
+
+    errors
+}
+
 fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, AnalyzeOptions) {
     let mut tech_stack_str = String::new();
     let mut command_str = String::new();
     // Seed options from configuration file, then let CLI args override
     let mut options = AnalyzeOptions::from_config(config);
 
+    // Phase 1: analyzer options. Pure and unit-testable; never exits.
+    let errors = parse_options_from_args(args, 1, &mut options);
+    if !errors.is_empty() {
+        for err in &errors {
+            eprintln!("Error: {}", err);
+        }
+        std::process::exit(1);
+    }
+
+    // Phase 2: control-flow flags and positional arguments.
     let mut i = 1;
     while i < args.len() {
-        match args[i].as_str() {
+        let arg = args[i].as_str();
+
+        match arg {
             "--help" | "-h" => {
                 show_help();
                 std::process::exit(0);
@@ -180,189 +455,33 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
                 // If -v appears after a tech stack, treat it as a command argument
                 // (e.g. "analyzer pytest -v" should pass -v to pytest, not --version)
                 if command_str.is_empty() {
-                    command_str = args[i].clone();
-                }
-            }
-            "--filter-warnings" => {
-                options.filter_warnings = true;
-            }
-            "--verbose" => {
-                options.verbosity = Verbosity::Verbose;
-            }
-            "--quiet" | "-q" => {
-                options.verbosity = Verbosity::Minimal;
-            }
-            "--filter-paths" => {
-                if i + 1 < args.len() {
-                    options.filter_paths = args[i + 1]
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    i += 1;
-                }
-            }
-            "--output" | "-o" => {
-                if i + 1 < args.len() {
-                    options.output_file = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--format" => {
-                if i + 1 < args.len() {
-                    let format_str = &args[i + 1];
-                    options.report_format = format_str.parse().unwrap_or_else(|e| {
-                        eprintln!("Error: Invalid format '{}': {}", format_str, e);
-                        eprintln!("Supported formats: markdown, json, html, raw, raw-json");
-                        std::process::exit(1);
-                    });
-                    i += 1;
-                }
-            }
-            "--stdout" => {
-                options.stdout_only = true;
-            }
-            // === Cargo Workspace Options ===
-            "--workspace" => {
-                options.workspace = true;
-            }
-            "--package" | "-p" => {
-                if i + 1 < args.len() {
-                    options.package.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--exclude" => {
-                if i + 1 < args.len() {
-                    options.exclude.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            // === Cargo Target Options ===
-            "--lib" => {
-                options.lib = true;
-            }
-            "--bin" => {
-                if i + 1 < args.len() {
-                    options.bin.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--bins" => {
-                options.bins = true;
-            }
-            "--test" => {
-                if i + 1 < args.len() {
-                    options.test.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--tests" => {
-                options.tests = true;
-            }
-            "--example" => {
-                if i + 1 < args.len() {
-                    options.example.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--examples" => {
-                options.examples = true;
-            }
-            "--bench" => {
-                if i + 1 < args.len() {
-                    options.bench.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--benches" => {
-                options.benches = true;
-            }
-            "--all-targets" => {
-                options.all_targets = true;
-            }
-            // === Cargo Feature Options ===
-            "--features" => {
-                if i + 1 < args.len() {
-                    options.features.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--all-features" => {
-                options.all_features = true;
-            }
-            "--no-default-features" => {
-                options.no_default_features = true;
-            }
-            "--no-short-circuit" => {
-                options.success_short_circuit = false;
-            }
-            // === C++ Build Options ===
-            "--source-dir" => {
-                if i + 1 < args.len() {
-                    options.source_dir = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--build-dir" => {
-                if i + 1 < args.len() {
-                    options.build_dir = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--cmake-generator" => {
-                if i + 1 < args.len() {
-                    options.cmake_generator = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--target" => {
-                if i + 1 < args.len() {
-                    options.target = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--target-files" => {
-                if i + 1 < args.len() {
-                    options.target_files = args[i + 1]
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    i += 1;
-                }
-            }
-            "-I" | "--include-path" => {
-                if i + 1 < args.len() {
-                    options.include_paths.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "-D" | "--define" => {
-                if i + 1 < args.len() {
-                    options.defines.push(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--cpp-std" => {
-                if i + 1 < args.len() {
-                    options.cpp_standard = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            arg => {
-                if !arg.starts_with('-') {
-                    if tech_stack_str.is_empty() {
-                        tech_stack_str = arg.to_string();
-                    } else if command_str.is_empty() {
-                        // Collect the full command string
-                        command_str = arg.to_string();
-                    }
-                } else if !tech_stack_str.is_empty() && command_str.is_empty() {
-                    // Unknown flag after tech stack → treat as command
-                    // This handles: analyzer mypy "--strict ."
                     command_str = arg.to_string();
                 }
+                i += 1;
+                continue;
             }
+            _ => {}
         }
+
+        if is_known_analyzer_flag(arg) {
+            // Consumed in phase 1; skip the flag together with its value so the
+            // value is never mistaken for a tech stack or a command.
+            if flag_takes_value(arg) {
+                i += 1;
+            }
+        } else if !arg.starts_with('-') {
+            if tech_stack_str.is_empty() {
+                tech_stack_str = arg.to_string();
+            } else if command_str.is_empty() {
+                // Collect the full command string
+                command_str = arg.to_string();
+            }
+        } else if !tech_stack_str.is_empty() && command_str.is_empty() {
+            // Unknown flag after tech stack → treat as command
+            // This handles: analyzer mypy "--strict ."
+            command_str = arg.to_string();
+        }
+
         i += 1;
     }
 
@@ -916,8 +1035,10 @@ mod tests {
     #[test]
     fn test_parse_options_from_args_no_short_circuit() {
         let args = vec!["--no-short-circuit".to_string()];
-        let mut opts = AnalyzeOptions::default();
-        opts.success_short_circuit = true;
+        let mut opts = AnalyzeOptions {
+            success_short_circuit: true,
+            ..Default::default()
+        };
         parse_options_from_args(&args, 0, &mut opts);
         assert!(!opts.success_short_circuit);
     }

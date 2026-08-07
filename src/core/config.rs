@@ -3,5 +3,4 @@
 //! This module now re-exports from the new `config` module at the crate root.
 //! All configuration types and loaders have been moved to `src/config/`.
 
-#[allow(unused_imports)]
 pub use crate::config::*;

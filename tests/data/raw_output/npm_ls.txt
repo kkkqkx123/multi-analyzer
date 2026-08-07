@@ -1,4 +1,4 @@
-test-npm-project@1.0.0 /workspace/multi-analyzer/tests/data/fixtures/npm-project
+test-npm-project@1.0.0 /home/kkkqkx/code/multi-analyzer/tests/data/fixtures/npm-project
 ├── @types/jest@29.5.14
 ├── @types/node@20.19.39
 ├── @typescript-eslint/eslint-plugin@6.21.0

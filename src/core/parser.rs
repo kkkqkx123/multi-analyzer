@@ -1,7 +1,6 @@
 //! Parser trait definition
 //! defines the interface for parsing command output
 
-#![allow(dead_code)]
 
 use super::types::{Issue, IssueLevel, Location};
 

@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 /// A single analysis run record.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct AnalysisRecord {
     pub tech_stack: String,
     pub command: String,
@@ -120,7 +119,6 @@ impl Tracker {
         stats
     }
 
-    #[allow(dead_code)]
     fn records(&self) -> &[AnalysisRecord] {
         &self.records
     }
@@ -183,7 +181,6 @@ pub fn stats() -> TrackingStats {
 }
 
 /// Get all recorded analysis runs.
-#[allow(dead_code)]
 pub fn records() -> Vec<AnalysisRecord> {
     tracker()
         .lock()
@@ -192,7 +189,6 @@ pub fn records() -> Vec<AnalysisRecord> {
 }
 
 /// Reset all tracking data.
-#[allow(dead_code)]
 pub fn reset() {
     if let Ok(mut t) = tracker().lock() {
         *t = Tracker::new();
@@ -203,8 +199,20 @@ pub fn reset() {
 mod tests {
     use super::*;
 
+    // The tracker is a process-wide singleton. Rust executes tests in parallel,
+    // so tests that reset/inspect the global state must be serialized to avoid
+    // cross-test contamination (e.g. one test's `complete()` leaking into another
+    // test's post-`reset()` window and skewing the aggregate counts).
+    static TRACKING_TEST_LOCK: Mutex<()> = Mutex::new(());
+    fn lock_tracker() -> std::sync::MutexGuard<'static, ()> {
+        TRACKING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn test_timing_guard_basic() {
+        let _guard = lock_tracker();
         reset();
         let mut guard = TimingGuard::start("cargo", "cargo check");
         guard.set_output_bytes(1000);
@@ -219,6 +227,7 @@ mod tests {
 
     #[test]
     fn test_stats_aggregation() {
+        let _guard = lock_tracker();
         reset();
         for i in 0..5 {
             let mut guard = TimingGuard::start("cargo", "cargo check");
@@ -236,6 +245,7 @@ mod tests {
 
     #[test]
     fn test_stats_empty() {
+        let _guard = lock_tracker();
         reset();
         let s = stats();
         assert_eq!(s.total_runs, 0);
@@ -245,6 +255,7 @@ mod tests {
 
     #[test]
     fn test_summary_format() {
+        let _guard = lock_tracker();
         reset();
         let mut guard = TimingGuard::start("cargo", "cargo check");
         guard.set_output_bytes(2048);

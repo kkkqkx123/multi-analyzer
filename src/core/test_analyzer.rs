@@ -153,7 +153,7 @@ pub trait TestAnalyzer: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::{AnalysisResult, Issue, IssueLevel, Location, SubCommand, TestCase, TestStatus, TestSummary};
+    use crate::core::types::{Issue, IssueLevel, Location, SubCommand, TestCase, TestStatus, TestSummary};
 
     #[test]
     fn test_test_options_from_analyze_options_with_subcommand() {

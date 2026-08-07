@@ -622,7 +622,7 @@ impl AnalyzeOptions {
     /// Seed AnalyzeOptions from configuration file.
     /// CLI args should override these values after calling this.
     pub fn from_config(config: &crate::config::AppConfig) -> Self {
-        AnalyzeOptions {
+        let mut opts = AnalyzeOptions {
             report_format: match config.report.format.as_str() {
                 "json" => ReportFormat::Json,
                 "html" => ReportFormat::Html,
@@ -643,7 +643,11 @@ impl AnalyzeOptions {
             keep_patterns: config.filter.keep_patterns.clone(),
             success_short_circuit: config.report.success_short_circuit,
             ..AnalyzeOptions::default()
-        }
+        };
+        // Default: output to stdout (like typical CLI tools).
+        // Use -o/--output <file> to write to a file instead.
+        opts.stdout_only = true;
+        opts
     }
 }
 

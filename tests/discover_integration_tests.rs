@@ -25,7 +25,10 @@ fn assert_classified_as(raw_cmd: &str, expected_tech: &str) -> Classification {
                 expected_tech
             );
         }
-        Classification::Unmatched { base_command } => {
+        Classification::Unmatched => {
+            // `Unmatched` is a unit variant; derive the base command from the
+            // input so the failure message stays diagnostic.
+            let base_command = raw_cmd.split_whitespace().next().unwrap_or("");
             panic!(
                 "Command '{}' was Unmatched (base='{}'), expected Matched with tech='{}'",
                 raw_cmd, base_command, expected_tech
@@ -39,7 +42,7 @@ fn assert_classified_as(raw_cmd: &str, expected_tech: &str) -> Classification {
 fn assert_unmatched(raw_cmd: &str) {
     let result = classify_command(raw_cmd);
     assert!(
-        matches!(result, Classification::Unmatched { .. }),
+        matches!(result, Classification::Unmatched),
         "Expected '{}' to be Unmatched but got Matched",
         raw_cmd
     );

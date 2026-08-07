@@ -127,34 +127,6 @@ impl GoParser {
         }
     }
 
-    /// Parse a single line based on detected or set command type
-    #[allow(dead_code)]
-    fn parse_line(&self, line: &str) -> Option<Issue> {
-        match self.command_type {
-            GoCommandType::Build => self.parse_go_build_error(line),
-            GoCommandType::Vet => self.parse_go_vet_error(line),
-            GoCommandType::GolangciLint => self.parse_golangci_lint_error(line),
-            GoCommandType::Test => {
-                // For test, we parse compilation errors only
-                self.parse_go_build_error(line)
-            }
-            GoCommandType::GoFmt => self.parse_gofmt_line(line),
-            GoCommandType::Unknown => {
-                // Try all parsers in order of specificity
-                if let Some(issue) = self.parse_golangci_lint_error(line) {
-                    return Some(issue);
-                }
-                if let Some(issue) = self.parse_go_vet_error(line) {
-                    return Some(issue);
-                }
-                if let Some(issue) = self.parse_gofmt_line(line) {
-                    return Some(issue);
-                }
-                self.parse_go_build_error(line)
-            }
-        }
-    }
-
     /// Parse go build error format:
     /// # example.com/myproject
     /// ./main.go:10:5: undefined: someVariable

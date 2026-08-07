@@ -1,6 +1,6 @@
 //! HTML Report Generator
 
-use super::{Reporter, ReporterError};
+use super::{Reporter, ReporterError, ReportOptions};
 use crate::core::types::{AnalysisResult, IssueLevel};
 
 /// HTML Report Generator
@@ -77,6 +77,22 @@ impl Default for HtmlReporter {
 
 impl Reporter for HtmlReporter {
     fn generate(&self, result: &AnalysisResult) -> Result<String, ReporterError> {
+        self.generate_with_options(result, ReportOptions::default())
+    }
+
+    fn generate_with_options(
+        &self,
+        result: &AnalysisResult,
+        options: ReportOptions,
+    ) -> Result<String, ReporterError> {
+        // Success short-circuit: if no issues found and short-circuit is enabled,
+        // output a single-line confirmation instead of a full HTML report
+        if options.success_short_circuit && result.total_issues == 0 {
+            if let Some(msg) = options.short_circuit_message() {
+                return Ok(msg);
+            }
+        }
+
         let mut html = String::new();
 
         // Type of test report

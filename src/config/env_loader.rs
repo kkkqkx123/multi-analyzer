@@ -53,20 +53,35 @@ pub fn apply_env_vars(config: &mut AppConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
 
-    /// Helper: set an env var and return a guard that restores it on drop
+    // `std::env::set_var`/`remove_var` mutate the process-global environment and
+    // are not thread-safe. Because Rust runs tests in parallel, concurrent env
+    // mutations from different tests can corrupt the environment table and cause
+    // `std::env::var` to spuriously fail. We serialize all env-mutating tests by
+    // holding a process-wide lock for the lifetime of each `EnvGuard`.
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Helper: set an env var and return a guard that restores it on drop.
+    /// The guard also holds `ENV_TEST_LOCK` so no other test mutates the
+    /// process environment while this one is active.
     fn set_env_guard(key: &str, val: &str) -> EnvGuard {
+        let lock = ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let prev = std::env::var(key).ok();
         std::env::set_var(key, val);
         EnvGuard {
             key: key.to_string(),
             previous: prev,
+            _lock: lock,
         }
     }
 
     struct EnvGuard {
         key: String,
         previous: Option<String>,
+        _lock: MutexGuard<'static, ()>,
     }
 
     impl Drop for EnvGuard {

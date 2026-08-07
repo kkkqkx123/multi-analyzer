@@ -76,7 +76,6 @@ pub trait Reporter: Send + Sync {
     }
 
     /// Generate a test-specific report
-    #[allow(dead_code)]
     fn generate_test_report(&self, result: &TestAnalysisResult) -> Result<String, ReporterError> {
         // Default implementation: call General Report Generation
         self.generate(&result.compile_result)

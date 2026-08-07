@@ -29,7 +29,6 @@ pub struct TomlShortCircuitRule {
 #[derive(Debug, Clone, Deserialize)]
 pub struct TomlFilterConfig {
     #[serde(default)]
-    #[allow(dead_code)]
     pub description: Option<String>,
     pub match_command: String,
     #[serde(default)]
@@ -103,7 +102,6 @@ impl FilterRegistry {
     }
 
     /// Create a registry with only built-in filters (for testing).
-    #[allow(dead_code)]
     pub fn with_builtin_only() -> Self {
         Self {
             project_filters: FilterFile {
@@ -208,7 +206,6 @@ impl FilterRegistry {
     }
 
     /// Find a filter by its name (e.g. "turbo").
-    #[allow(dead_code)]
     pub fn find_filter_by_name(&self, name: &str) -> Option<&TomlFilterConfig> {
         self.project_filters
             .filters

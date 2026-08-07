@@ -57,7 +57,6 @@ pub trait BuildAnalyzer: Send + Sync {
     fn parser(&self) -> &dyn OutputParser;
 
     /// Convert to Any for downcasting
-    #[allow(dead_code)]
     fn as_any(&self) -> &dyn std::any::Any;
 
     /// Get the test analyzer implementation if supported
@@ -142,8 +141,6 @@ impl Default for PluginRegistry {
 mod tests {
     use super::*;
     use crate::core::parser::OutputParser;
-    use crate::core::types::Issue;
-    use crate::core::parser::ParseResult;
     use std::any::Any;
 
     /// A mock analyzer for testing PluginRegistry

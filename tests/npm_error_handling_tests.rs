@@ -104,10 +104,25 @@ fn test_npm_analyzer_command_failure_no_issues() {
     );
 
     let analysis_result = result.unwrap();
-    // Should have 0 issues since the broken command output won't be parseable
-    assert_eq!(
-        analysis_result.total_issues, 0,
-        "Should have 0 parsed issues"
+    // The broken command exits non-zero (127) with no lint-parseable output. The
+    // analyzer must NOT silently report success: it must surface the raw error so
+    // the caller can see *why* the command failed (here: the `eslint` command was
+    // not found). We therefore assert the failure is surfaced together with the
+    // raw command output, rather than expecting 0 issues (which would mask it).
+    assert!(
+        analysis_result.command_failed,
+        "Analyzer should mark the run as command_failed when the command exits non-zero"
+    );
+    assert!(
+        analysis_result.total_issues >= 1,
+        "A failed command with no parseable output should still surface at least the failure"
+    );
+    assert!(
+        analysis_result.issues_by_file.values().flatten().any(|i| {
+            i.message.contains("Command failed")
+                && (i.message.contains("eslint") || i.message.contains("not found"))
+        }),
+        "The command failure should surface the raw error (missing eslint command), not just a generic message"
     );
 
     // Cleanup

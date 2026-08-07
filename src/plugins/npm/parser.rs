@@ -248,7 +248,6 @@ impl NpmParser {
     /// Strip turbo prefixes from output lines.
     /// ANSI stripping and TUI frame filtering are handled by `OutputPostProcessor`
     /// before this method is called. This method only handles package prefix extraction.
-    #[allow(dead_code)]
     pub fn strip_turbo_prefixes(&self, output: &str) -> String {
         let lines: Vec<String> = output.lines().map(|s| s.to_string()).collect();
         let processed_lines = self.merge_and_clean_lines(&lines);

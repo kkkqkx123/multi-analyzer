@@ -82,15 +82,6 @@ impl DotnetParser {
         Some(issue)
     }
 
-    /// Parse build summary lines like:
-    ///   Build succeeded.   0 warnings, 0 errors
-    ///   Build FAILED.      2 warnings, 1 error
-    #[allow(dead_code)]
-    fn parse_build_summary(&self, _lines: &[&str]) -> (usize, usize) {
-        // This is informational; actual issues are extracted from individual error lines
-        (0, 0)
-    }
-
     /// Parse dotnet format output: style/whitespace formatting issues.
     ///
     /// Format variants:
@@ -174,12 +165,6 @@ impl DotnetParser {
         Some(issue)
     }
 
-    /// Check if the output looks like `dotnet format` style output.
-    #[allow(dead_code)]
-    fn is_format_output(trimmed: &str) -> bool {
-        trimmed.contains(": Fix ") || trimmed.contains("Formatting ")
-    }
-
     /// Parse a single test result line from dotnet test output.
     ///   Passed  TestNamespace.TestClass.TestMethod
     ///   Failed  TestNamespace.TestClass.TestMethod
@@ -191,10 +176,9 @@ impl DotnetParser {
             ("Passed", name.trim())
         } else if let Some(name) = trimmed.strip_prefix("Failed ") {
             ("Failed", name.trim())
-        } else if let Some(name) = trimmed.strip_prefix("Skipped ") {
-            ("Skipped", name.trim())
         } else {
-            return None;
+            let name = trimmed.strip_prefix("Skipped ")?;
+            ("Skipped", name.trim())
         };
 
         let status = match status_str {

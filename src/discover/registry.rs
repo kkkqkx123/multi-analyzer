@@ -16,7 +16,6 @@ use regex::Regex;
 
 use crate::config::modules::CommandConfig;
 
-#[allow(unused_imports)]
 use super::lexer;
 use super::rules;
 use crate::core::TechStack;
@@ -33,7 +32,6 @@ pub enum Classification {
         /// Extra arguments present in the raw command beyond the prefix and subcommand
         extra_args: Vec<String>,
         /// Index of the matching rule in RULES
-        #[allow(dead_code)]
         rule_index: usize,
     },
     /// No rule matched this command
@@ -42,7 +40,6 @@ pub enum Classification {
 
 impl Classification {
     /// True when a matching rule was found
-    #[allow(dead_code)]
     pub fn is_matched(&self) -> bool {
         matches!(self, Classification::Matched { .. })
     }
@@ -158,6 +155,21 @@ pub fn classify_command(raw_cmd: &str) -> Classification {
     classify_command_inner(raw_cmd, None)
 }
 
+/// Classify a raw shell command, falling back to config-defined commands.
+///
+/// Behaves like [`classify_command`], but when no static rule matches, the
+/// `commands` map from the loaded configuration is consulted: a command whose
+/// name equals the first token of `raw_cmd` and that is `enabled` resolves to
+/// the first entry of its `tech_stacks` list.
+///
+/// Static rules always take priority over config-defined commands.
+pub fn classify_command_with_config(
+    raw_cmd: &str,
+    commands: &HashMap<String, CommandConfig>,
+) -> Classification {
+    classify_command_inner(raw_cmd, Some(commands))
+}
+
 fn classify_command_inner(
     raw_cmd: &str,
     commands: Option<&HashMap<String, CommandConfig>>,
@@ -233,8 +245,6 @@ fn classify_command_inner(
         }
     }
 
-    let _base = cleaned.split_whitespace().next().unwrap_or("").to_string();
-
     Classification::Unmatched
 }
 
@@ -277,13 +287,29 @@ pub fn rewrite_command(raw_cmd: &str) -> Option<(TechStack, String, Vec<String>)
     }
 }
 
-/// Nothing after rewrite_command_with_config follows — it was removed.
+/// Rewrite a raw shell command, falling back to config-defined commands.
+///
+/// Returns `Some((TechStack, subcommand, extra_args))` when a static rule or a
+/// config-defined command matches, or `None` when nothing matches.
+pub fn rewrite_command_with_config(
+    raw_cmd: &str,
+    commands: &HashMap<String, CommandConfig>,
+) -> Option<(TechStack, String, Vec<String>)> {
+    match classify_command_with_config(raw_cmd, commands) {
+        Classification::Matched {
+            tech_stack,
+            subcommand,
+            extra_args,
+            ..
+        } => Some((tech_stack, subcommand, extra_args)),
+        Classification::Unmatched => None,
+    }
+}
 
 /// Rewrite the first segment of a compound command (up to the first operator).
 ///
 /// For compound commands like "cargo check && cargo test", only the first segment
 /// before any shell operator is rewritten.
-#[allow(dead_code)]
 pub fn rewrite_first_segment(raw_cmd: &str) -> Option<(TechStack, String, Vec<String>)> {
     let segments = lexer::split_on_operators(raw_cmd);
     if let Some(first) = segments.first() {
@@ -296,7 +322,6 @@ pub fn rewrite_first_segment(raw_cmd: &str) -> Option<(TechStack, String, Vec<St
 /// Classify using only a specific rule set (category-filtered matching).
 ///
 /// Falls back to the full `RULES` table if the rule set yields no match.
-#[allow(dead_code)]
 pub fn classify_with_ruleset(raw_cmd: &str, rule_set: &rules::RuleSet) -> Classification {
     let cleaned = strip_env_prefixes(raw_cmd);
 
@@ -343,7 +368,6 @@ pub fn classify_with_ruleset(raw_cmd: &str, rule_set: &rules::RuleSet) -> Classi
 /// Classify using a category filter, matching only rules in that category.
 ///
 /// Returns the first match from the matching rule set.
-#[allow(dead_code)]
 pub fn classify_by_category(raw_cmd: &str, category: &str) -> Classification {
     if let Some(rule_set) = rules::rule_set_by_category(category) {
         classify_with_ruleset(raw_cmd, rule_set)

@@ -83,12 +83,27 @@ pub fn run_analyzer(
         StageResult::Complete(mut r) => {
             r.exit_code = Some(exit_code);
             r.command_failed = !command_success;
-            // Fallback: command failed but no issues parsed → surface raw output
+            // Fallback: command failed but no issues parsed → surface the raw
+            // error so the caller sees *why* it failed (e.g. a missing
+            // dependency like `eslint`/`turbo` not being installed).
             if !command_success && r.total_issues == 0 {
-                let raw = if let Some(ref out) = result.raw_stdout {
-                    format!("Command failed (exit code {}). Raw output:\n{}", exit_code, out)
-                } else {
-                    format!("Command failed (exit code {}). No output captured.", exit_code)
+                let raw = match (&result.raw_stdout, &result.raw_stderr) {
+                    (Some(out), Some(err)) if !err.is_empty() => format!(
+                        "Command failed (exit code {}). Raw output:\n{}\n{}",
+                        exit_code, out, err
+                    ),
+                    (Some(out), _) => format!(
+                        "Command failed (exit code {}). Raw output:\n{}",
+                        exit_code, out
+                    ),
+                    (None, Some(err)) if !err.is_empty() => format!(
+                        "Command failed (exit code {}). Raw output:\n{}",
+                        exit_code, err
+                    ),
+                    _ => format!(
+                        "Command failed (exit code {}). No output captured.",
+                        exit_code
+                    ),
                 };
                 r.add_issue(Issue::new(
                     IssueLevel::Error,
@@ -150,9 +165,9 @@ pub enum FilterMode<'a> {
 pub struct StreamResult {
     /// Process exit code
     pub exit_code: i32,
-    /// Raw stdout captured during streaming (only when verbose)
+    /// Raw stdout captured during streaming (always captured, regardless of verbosity)
     pub raw_stdout: Option<String>,
-    /// Raw stderr captured during streaming (only when verbose)
+    /// Raw stderr captured during streaming (always captured, regardless of verbosity)
     pub raw_stderr: Option<String>,
     /// Filtered output (result of applying LineFilter to both stdout and stderr)
     pub filtered: String,
@@ -265,19 +280,6 @@ fn parse_and_analyze(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::{IssueLevel, Location};
-
-    struct MockParser;
-
-    impl OutputParser for MockParser {
-        fn parse(&self, _output: &str) -> ParseResult<Vec<crate::core::types::Issue>> {
-            ParseResult::Full(vec![crate::core::types::Issue::new(
-                IssueLevel::Error,
-                "test error",
-                Location::new("src/main.rs"),
-            )])
-        }
-    }
 
     #[test]
     fn test_post_process_line_filter_basic() {

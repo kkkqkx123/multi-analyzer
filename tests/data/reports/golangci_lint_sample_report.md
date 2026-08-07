@@ -18,6 +18,13 @@
 |------|--------|-------|---------|
 | 20 | 16 | Warning | Error return value of `os.Open` is not checked |
 
+### internal/config/config.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 15 | 15 | Warning | Error return value of `os.Setenv` is not checked |
+| 26 | 10 | Warning | error strings should not be capitalized |
+
 ### cmd/myapp/main.go
 
 | Line | Column | Level | Message |
@@ -26,13 +33,6 @@
 | 18 | 14 | Warning | Printf format %d has arg "hello" of wrong type string |
 | 21 | 10 | Warning | Error return value of `os.Setenv` is not checked |
 | 23 | 2 | Warning | `cfg` is unused |
-
-### internal/config/config.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 15 | 15 | Warning | Error return value of `os.Setenv` is not checked |
-| 26 | 10 | Warning | error strings should not be capitalized |
 
 ## Raw Output
 

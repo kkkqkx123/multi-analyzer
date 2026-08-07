@@ -14,11 +14,8 @@ pub mod utils;
 
 pub use analyzer::*;
 pub use command::CommandBuilder;
-#[allow(unused_imports)]
 pub use command::CommandOutput;
-#[allow(unused_imports)]
 pub use command::RunOptions;
-#[allow(unused_imports)]
 pub use config::*;
 pub use parser::BaseParser;
 pub use parser::BlockCollector;

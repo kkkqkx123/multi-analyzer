@@ -168,11 +168,13 @@ mod tests {
     #[test]
     fn test_merge_with_project_report_override() {
         let global = AppConfig::default();
-        let mut project = ProjectAppConfig::default();
-        project.report = Some(ReportConfig {
-            format: "json".to_string(),
+        let project = ProjectAppConfig {
+            report: Some(ReportConfig {
+                format: "json".to_string(),
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
         let merged = global.merge_with_project(&project);
         assert_eq!(merged.report.format, "json");
     }
@@ -246,11 +248,13 @@ mod tests {
     #[test]
     fn test_merge_with_project_filter_override() {
         let global = AppConfig::default();
-        let mut project = ProjectAppConfig::default();
-        project.filter = Some(FilterConfig {
-            strip_ansi: true,
+        let project = ProjectAppConfig {
+            filter: Some(FilterConfig {
+                strip_ansi: true,
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
         let merged = global.merge_with_project(&project);
         assert!(merged.filter.strip_ansi);
     }

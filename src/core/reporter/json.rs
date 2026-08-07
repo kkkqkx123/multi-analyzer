@@ -1,6 +1,6 @@
 //! JSON Report Generator
 
-use super::{Reporter, ReporterError};
+use super::{Reporter, ReporterError, ReportOptions};
 use crate::core::types::AnalysisResult;
 
 /// JSON Report Generator
@@ -20,6 +20,22 @@ impl Default for JsonReporter {
 
 impl Reporter for JsonReporter {
     fn generate(&self, result: &AnalysisResult) -> Result<String, ReporterError> {
+        self.generate_with_options(result, ReportOptions::default())
+    }
+
+    fn generate_with_options(
+        &self,
+        result: &AnalysisResult,
+        options: ReportOptions,
+    ) -> Result<String, ReporterError> {
+        // Success short-circuit: if no issues found and short-circuit is enabled,
+        // output a single-line confirmation instead of a full JSON report
+        if options.success_short_circuit && result.total_issues == 0 {
+            if let Some(msg) = options.short_circuit_message() {
+                return Ok(msg);
+            }
+        }
+
         let mut json = String::new();
         json.push_str("{\n");
 

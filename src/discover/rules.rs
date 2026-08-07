@@ -48,7 +48,6 @@ impl RuleSet {
     }
 
     /// True if the set has no rules.
-    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
     }
@@ -60,7 +59,6 @@ impl RuleSet {
 }
 
 /// All rule sets, organized by category for selective matching.
-#[allow(dead_code)]
 pub const RULE_SETS: &[RuleSet] = &[
     RuleSet::new("Rust", RUST_RULES),
     RuleSet::new("Node.js", NODE_RULES),
@@ -74,7 +72,6 @@ pub const RULE_SETS: &[RuleSet] = &[
 ];
 
 /// Rust toolchain rules
-#[allow(dead_code)]
 pub const RUST_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^cargo\s+(check|clippy|test|build|fmt)",
@@ -93,7 +90,6 @@ pub const RUST_RULES: &[CommandRule] = &[
 ];
 
 /// Node.js ecosystem rules
-#[allow(dead_code)]
 pub const NODE_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^npm\s+(run\s+)?(lint|typecheck|audit|test)",
@@ -120,7 +116,6 @@ pub const NODE_RULES: &[CommandRule] = &[
 ];
 
 /// Python ecosystem rules
-#[allow(dead_code)]
 pub const PYTHON_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^mypy\b\s*(.*)$",
@@ -153,7 +148,6 @@ pub const PYTHON_RULES: &[CommandRule] = &[
 ];
 
 /// Go ecosystem rules
-#[allow(dead_code)]
 pub const GO_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^go\s+(build|test|vet|fmt)",
@@ -179,7 +173,6 @@ pub const GO_RULES: &[CommandRule] = &[
 ];
 
 /// Java ecosystem rules
-#[allow(dead_code)]
 pub const JAVA_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^mvn\s+(compile|test|verify|package)",
@@ -198,7 +191,6 @@ pub const JAVA_RULES: &[CommandRule] = &[
 ];
 
 /// .NET ecosystem rules
-#[allow(dead_code)]
 pub const DOTNET_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^dotnet\s+(build|test|format)",
@@ -210,7 +202,6 @@ pub const DOTNET_RULES: &[CommandRule] = &[
 ];
 
 /// Ruby ecosystem rules
-#[allow(dead_code)]
 pub const RUBY_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^rubocop\b\s*(.*)$",
@@ -229,7 +220,6 @@ pub const RUBY_RULES: &[CommandRule] = &[
 ];
 
 /// C++ ecosystem rules
-#[allow(dead_code)]
 pub const CPP_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^cmake\s+(--build|--configure)",
@@ -269,7 +259,6 @@ pub const CPP_RULES: &[CommandRule] = &[
 ];
 
 /// Broad fallback rules evaluated after all specific categories
-#[allow(dead_code)]
 pub const FALLBACK_RULES: &[CommandRule] = &[
     CommandRule {
         pattern: r"^npm\s+(?:run\s+)?(\S+)",
@@ -475,7 +464,6 @@ pub const RULES: &[CommandRule] = &[
 ];
 
 /// Look up a rule by its 0-based index in RULES
-#[allow(dead_code)]
 pub fn rule_by_index(idx: usize) -> Option<&'static CommandRule> {
     RULES.get(idx)
 }
@@ -483,7 +471,6 @@ pub fn rule_by_index(idx: usize) -> Option<&'static CommandRule> {
 /// Find all rules that match a given base command prefix.
 ///
 /// Returns rules whose `prefixes` includes the given prefix string.
-#[allow(dead_code)]
 pub fn find_rules_by_prefix(prefix: &str) -> Vec<&'static CommandRule> {
     RULES
         .iter()
@@ -500,7 +487,6 @@ pub fn find_rules_by_category(category: &str) -> Vec<&'static CommandRule> {
 }
 
 /// Get a `RuleSet` by category name.
-#[allow(dead_code)]
 pub fn rule_set_by_category(category: &str) -> Option<&'static RuleSet> {
     RULE_SETS
         .iter()
@@ -526,7 +512,6 @@ pub fn all_categories() -> Vec<&'static str> {
 }
 
 /// Check if a command string matches any rule (quick classification check).
-#[allow(dead_code)]
 pub fn has_matching_rule(cmd: &str) -> bool {
     RULES.iter().any(|rule| {
         regex::Regex::new(&format!("(?i){}", rule.pattern))
