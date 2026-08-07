@@ -27,9 +27,17 @@ impl GradleParser {
             return Some(Issue::new(level, message, location));
         }
 
-        // Check for general error messages without file path
-        // Format: > Task :compileJava FAILED
+        // Task/build summary lines are not diagnostics — skip them so they are
+        // not reported as spurious issues.
+        //   > Task :compileJava FAILED
+        //   BUILD FAILED in 519ms
+        if trimmed.starts_with("> Task") {
+            return None;
+        }
         if trimmed.contains("FAILED") {
+            if trimmed.contains("BUILD FAILED") || trimmed.contains("BUILD FAILURE") {
+                return None;
+            }
             let location = Location::new("build.gradle");
             let message = trimmed.to_string();
             return Some(Issue::new(IssueLevel::Error, message, location));
@@ -117,16 +125,13 @@ impl GradleParser {
             return (Some(issue), start_index + 1);
         }
 
-        // Check for symbol error continuation lines
+        // Continuation lines (`symbol:`, `location:`) belong to the preceding
+        // diagnostic. Returning the previous issue here would emit the same
+        // issue a second/third time, so just skip them.
         // Format:  symbol: variable x
         // Format:  location: class com.example.MyClass
         if line.trim().starts_with("symbol:") || line.trim().starts_with("location:") {
-            // Look up for the error line
-            for i in (0..start_index).rev() {
-                if let Some(issue) = self.parse_gradle_issue_line(&lines[i]) {
-                    return (Some(issue), start_index + 1);
-                }
-            }
+            return (None, start_index + 1);
         }
 
         (None, start_index + 1)
@@ -407,5 +412,32 @@ PASSED: 3, FAILED: 2, SKIPPED: 0";
         assert_eq!(test_result.failed_tests.len(), 2);
         assert!(test_result.failed_tests[0].name.contains("testMethod"));
         assert!(test_result.failed_tests[1].name.contains("testOtherMethod"));
+    }
+
+    #[test]
+    fn test_no_duplicate_from_continuation_lines() {
+        let parser = GradleParser::new();
+        // The symbol:/location: continuation lines must NOT create extra issues.
+        let output = "\
+/workspace/proj/src/Main.java:8: error: cannot find symbol
+        System.out.println(multiply(total, 4));
+                           ^
+  symbol:   method multiply(int,int)
+  location: class Main
+BUILD FAILED in 519ms";
+        let result = parser.parse(output);
+        let issues = result.data().unwrap();
+        // 1 real compile error only — no duplicates, no BUILD FAILED noise.
+        assert_eq!(issues.len(), 1, "continuation/summary lines must not duplicate");
+        assert_eq!(issues[0].message, "cannot find symbol");
+    }
+
+    #[test]
+    fn test_skips_task_and_build_failed_summaries() {
+        let parser = GradleParser::new();
+        assert!(parser.parse_gradle_issue_line("> Task :compileJava FAILED").is_none());
+        assert!(parser
+            .parse_gradle_issue_line("BUILD FAILED in 519ms")
+            .is_none());
     }
 }

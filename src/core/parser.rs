@@ -161,22 +161,24 @@ impl BaseParser {
         }
     }
 
-    /// Extract the error code (e.g. E0308 or TS1234)
+    /// Extract the error code (e.g. E0308 or TS1234).
+    ///
+    /// The code is returned *bare*, without the surrounding brackets: reporters
+    /// are responsible for presentation and already wrap it in `[...]`. Keeping
+    /// the brackets here produced doubled markers such as `[[E0308]]`.
     pub fn extract_error_code(&self, text: &str) -> Option<String> {
-        if let Some(start) = text.find('[') {
-            if let Some(end) = text.find(']') {
-                if start < end {
-                    let code = &text[start..=end];
-                    if code.starts_with('[') && code.ends_with(']') {
-                        let inner = &code[1..code.len() - 1];
-                        if inner.chars().all(|c| c.is_ascii_alphanumeric()) {
-                            return Some(code.to_string());
-                        }
-                    }
-                }
-            }
+        let start = text.find('[')?;
+        let end = text.find(']')?;
+        if start >= end {
+            return None;
         }
-        None
+
+        let inner = &text[start + 1..end];
+        if inner.is_empty() || !inner.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return None;
+        }
+
+        Some(inner.to_string())
     }
 
     /// Parsing standard format: file:line:col: level: message
@@ -261,16 +263,23 @@ impl BaseParser {
                             let parts: Vec<&str> = before_colon.split_whitespace().collect();
                             let code_part = parts.last().unwrap_or(&before_colon);
 
-                            let formatted_code =
-                                if code_part.starts_with('[') && code_part.ends_with(']') {
-                                    Some(code_part.to_string())
-                                } else if code_part.chars().all(|c| c.is_alphanumeric())
-                                    && code_part.len() > 1
-                                {
-                                    Some(format!("[{}]", code_part))
-                                } else {
-                                    None
-                                };
+                            // Store bare codes (e.g. "TS2345"), consistent with
+                            // extract_error_code / the Cargo parser. The reporter
+                            // adds the surrounding brackets when rendering, so a
+                            // bracketed code here would produce a double bracket
+                            // like "[[TS2345]]".
+                            let formatted_code = if code_part.starts_with('[')
+                                && code_part.ends_with(']')
+                                && code_part.len() >= 2
+                            {
+                                Some(code_part[1..code_part.len() - 1].to_string())
+                            } else if code_part.chars().all(|c| c.is_alphanumeric())
+                                && code_part.len() > 1
+                            {
+                                Some(code_part.to_string())
+                            } else {
+                                None
+                            };
 
                             (formatted_code, msg_part.to_string())
                         } else {
@@ -714,7 +723,7 @@ mod base_parser_tests {
         let parser = BaseParser::new();
         assert_eq!(
             parser.extract_error_code("mismatched types [E0308]"),
-            Some("[E0308]".to_string())
+            Some("E0308".to_string())
         );
     }
 
@@ -723,7 +732,7 @@ mod base_parser_tests {
         let parser = BaseParser::new();
         assert_eq!(
             parser.extract_error_code("Type 'X' is not assignable [TS2345]"),
-            Some("[TS2345]".to_string())
+            Some("TS2345".to_string())
         );
     }
 
@@ -779,7 +788,7 @@ mod base_parser_tests {
         let issue = parser.parse_standard_format(line);
         assert!(issue.is_some());
         let issue = issue.unwrap();
-        assert_eq!(issue.code.unwrap(), "[E0308]");
+        assert_eq!(issue.code.unwrap(), "E0308");
     }
 
     #[test]
@@ -835,6 +844,25 @@ mod base_parser_tests {
         let parser = BaseParser::new();
         let line = "file(1,2): some random message";
         assert!(parser.parse_parentheses_format(line).is_none());
+    }
+
+    #[test]
+    fn test_parse_parentheses_format_bare_code() {
+        let parser = BaseParser::new();
+        // TS native format carries a bracketed code; it must be stored bare so
+        // the reporter does not render a double bracket like "[[TS2345]]".
+        let line = "src/app.ts(10,5): error TS2345: Type 'X' is not assignable to type 'Y'";
+        let issue = parser.parse_parentheses_format(line).expect("should parse");
+        assert_eq!(issue.code.unwrap(), "TS2345");
+    }
+
+    #[test]
+    fn test_parse_parentheses_format_bare_code_no_brackets() {
+        let parser = BaseParser::new();
+        // Code without surrounding brackets is stored verbatim (no added brackets).
+        let line = "src/app.ts(10,5): error ABC123: message";
+        let issue = parser.parse_parentheses_format(line).expect("should parse");
+        assert_eq!(issue.code.unwrap(), "ABC123");
     }
 
     // ── extract_message ─────────────────────────────────────────────

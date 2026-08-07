@@ -85,6 +85,44 @@ impl CargoParser {
         Some(issue)
     }
 
+    /// Split a rustc diagnostic header into its level, optional code and message.
+    ///
+    /// Recognises both the plain and the coded form:
+    ///
+    /// ```text
+    /// error: cannot find value `x` in this scope   -> (Error,   None,          "cannot find ...")
+    /// error[E0308]: mismatched types               -> (Error,   Some("E0308"), "mismatched types")
+    /// warning[unused_imports]: unused import       -> (Warning, Some("unused_imports"), "unused import")
+    /// ```
+    ///
+    /// Returns `None` for any line that is not a diagnostic header.
+    fn split_diagnostic_header(line: &str) -> Option<(IssueLevel, Option<&str>, &str)> {
+        let (level, rest) = if let Some(rest) = line.strip_prefix("error") {
+            (IssueLevel::Error, rest)
+        } else if let Some(rest) = line.strip_prefix("warning") {
+            (IssueLevel::Warning, rest)
+        } else {
+            return None;
+        };
+
+        // Plain form: `error: message`
+        if let Some(message) = rest.strip_prefix(':') {
+            return Some((level, None, message.trim()));
+        }
+
+        // Coded form: `error[E0308]: message`
+        let rest = rest.strip_prefix('[')?;
+        let close = rest.find(']')?;
+        let code = &rest[..close];
+        let message = rest[close + 1..].strip_prefix(':')?;
+
+        if code.is_empty() {
+            return None;
+        }
+
+        Some((level, Some(code), message.trim()))
+    }
+
     fn parse_multiline_error(
         &self,
         lines: &[String],
@@ -96,12 +134,14 @@ impl CargoParser {
 
         let line = &lines[start_index];
 
-        let (level, desc) = if let Some(rest) = line.strip_prefix("error:") {
-            (IssueLevel::Error, rest.trim())
-        } else if let Some(rest) = line.strip_prefix("warning:") {
-            (IssueLevel::Warning, rest.trim())
-        } else {
-            return (None, start_index + 1);
+        // rustc emits either `error: msg` or, when the lint/diagnostic carries an
+        // error code, `error[E0308]: msg`. The same holds for warnings
+        // (`warning[unused_imports]: msg`). Both shapes must be recognised,
+        // otherwise every coded diagnostic — which is the majority of real
+        // compile errors — is silently dropped.
+        let (level, code_from_header, desc) = match Self::split_diagnostic_header(line) {
+            Some(parsed) => parsed,
+            None => return (None, start_index + 1),
         };
 
         if start_index + 1 < lines.len() {
@@ -122,7 +162,12 @@ impl CargoParser {
                         issue = issue.with_package(pkg);
                     }
 
-                    if let Some(code) = self.base.extract_error_code(desc) {
+                    // Prefer the code carried by the header (`error[E0308]`),
+                    // falling back to whatever can be recovered from the message.
+                    if let Some(code) = code_from_header
+                        .map(|c| c.to_string())
+                        .or_else(|| self.base.extract_error_code(desc))
+                    {
                         issue = issue.with_code(code);
                     }
 
@@ -176,7 +221,7 @@ impl CargoParser {
 
         let file_path = if let Some(rest) = trimmed.strip_prefix("Reformatting ") {
             rest.trim().to_string()
-        } else if trimmed.contains('.') {
+        } else if Self::is_bare_rust_file_path(trimmed) {
             trimmed.to_string()
         } else {
             return None;
@@ -191,6 +236,28 @@ impl CargoParser {
         .with_code("FORMAT".to_string());
 
         Some(issue)
+    }
+
+    /// Report whether a line is a bare `*.rs` path emitted by `cargo fmt --check`.
+    ///
+    /// This guard exists because `parse_cargo_fmt_line` is the last-resort branch
+    /// of the parser and therefore sees every unmatched line of *any* cargo
+    /// command. Accepting anything that merely contains a dot made cargo progress
+    /// lines such as `Checking rust-demo v0.1.0 (/path)`, rustc note lines such as
+    /// `--> src/main.rs:24:13` and diagnostic snippets be reported as bogus
+    /// FORMAT issues.
+    fn is_bare_rust_file_path(trimmed: &str) -> bool {
+        // `cargo fmt --check` prints one plain path per line, nothing else.
+        if !trimmed.ends_with(".rs") {
+            return false;
+        }
+        // Progress/diagnostic lines are multi-token; a path never is.
+        if trimmed.split_whitespace().count() != 1 {
+            return false;
+        }
+        // rustc location lines (`--> src/main.rs:24:13`) and list markers are
+        // not paths on their own.
+        !trimmed.starts_with('-') && !trimmed.starts_with('=') && !trimmed.contains("-->")
     }
 }
 
@@ -546,7 +613,7 @@ mod tests {
         assert_eq!(issue.location.file_path, "src/main.rs");
         assert_eq!(issue.location.line_number, Some(10));
         assert_eq!(issue.location.column_number, Some(5));
-        assert_eq!(issue.code, Some("[E0308]".to_string()));
+        assert_eq!(issue.code, Some("E0308".to_string()));
         assert_eq!(issue.message, "mismatched types");
         assert!(matches!(issue.level, IssueLevel::Error));
     }
@@ -583,6 +650,105 @@ mod tests {
         assert_eq!(issue.location.file_path, "D:\\project\\src\\main.rs");
         assert_eq!(issue.location.line_number, Some(10));
         assert_eq!(issue.location.column_number, Some(5));
+    }
+
+    // ── coded multi-line diagnostics ────────────────────────────────
+
+    #[test]
+    fn test_split_diagnostic_header_plain() {
+        let (level, code, msg) =
+            CargoParser::split_diagnostic_header("error: cannot find value `x`").unwrap();
+        assert!(matches!(level, IssueLevel::Error));
+        assert_eq!(code, None);
+        assert_eq!(msg, "cannot find value `x`");
+    }
+
+    #[test]
+    fn test_split_diagnostic_header_coded() {
+        let (level, code, msg) =
+            CargoParser::split_diagnostic_header("error[E0308]: mismatched types").unwrap();
+        assert!(matches!(level, IssueLevel::Error));
+        assert_eq!(code, Some("E0308"));
+        assert_eq!(msg, "mismatched types");
+    }
+
+    #[test]
+    fn test_split_diagnostic_header_warning_coded() {
+        let (level, code, msg) =
+            CargoParser::split_diagnostic_header("warning[unused_imports]: unused import").unwrap();
+        assert!(matches!(level, IssueLevel::Warning));
+        assert_eq!(code, Some("unused_imports"));
+        assert_eq!(msg, "unused import");
+    }
+
+    #[test]
+    fn test_split_diagnostic_header_rejects_non_diagnostics() {
+        assert!(CargoParser::split_diagnostic_header("   Compiling foo v0.1.0").is_none());
+        assert!(CargoParser::split_diagnostic_header("--> src/main.rs:1:1").is_none());
+        assert!(CargoParser::split_diagnostic_header("errors happened").is_none());
+    }
+
+    /// Coded errors must survive the full multi-line parse; regression test for
+    /// `error[E0308]:` headers being dropped entirely.
+    #[test]
+    fn test_parse_coded_multiline_error() {
+        let parser = CargoParser::new();
+        let output = "error[E0308]: mismatched types\n --> src/calc.rs:9:5\n  |\n";
+        let issues = match parser.parse(output) {
+            ParseResult::Full(issues) => issues,
+            _ => panic!("expected a full parse"),
+        };
+
+        assert_eq!(issues.len(), 1);
+        assert!(matches!(issues[0].level, IssueLevel::Error));
+        assert_eq!(issues[0].code, Some("E0308".to_string()));
+        assert_eq!(issues[0].location.file_path, "src/calc.rs");
+        assert_eq!(issues[0].location.line_number, Some(9));
+    }
+
+    // ── cargo fmt fallback must not swallow ordinary output ─────────
+
+    #[test]
+    fn test_is_bare_rust_file_path_accepts_plain_paths() {
+        assert!(CargoParser::is_bare_rust_file_path("src/main.rs"));
+        assert!(CargoParser::is_bare_rust_file_path("crates/foo/src/lib.rs"));
+    }
+
+    #[test]
+    fn test_is_bare_rust_file_path_rejects_progress_and_notes() {
+        // Cargo progress lines contain dots but are not paths.
+        assert!(!CargoParser::is_bare_rust_file_path(
+            "Checking rust-demo v0.1.0 (/workspace/examples/rust-demo)"
+        ));
+        // rustc location notes.
+        assert!(!CargoParser::is_bare_rust_file_path("--> src/main.rs:24:13"));
+        // Diagnostic snippets and summaries.
+        assert!(!CargoParser::is_bare_rust_file_path(
+            "24 |     numbers.push_all(&[4, 5]);"
+        ));
+        assert!(!CargoParser::is_bare_rust_file_path(
+            "Some errors have detailed explanations: E0308, E0425."
+        ));
+    }
+
+    /// Regression test: a `cargo check` transcript must not yield bogus FORMAT
+    /// issues for progress lines.
+    #[test]
+    fn test_parse_ignores_cargo_progress_lines() {
+        let parser = CargoParser::new();
+        let output = "   Compiling rust-demo v0.1.0 (/workspace/examples/rust-demo)\n\
+                      Checking rust-demo v0.1.0 (/workspace/examples/rust-demo)\n\
+                      For more information about an error, try `rustc --explain E0308`.\n";
+        let issues = match parser.parse(output) {
+            ParseResult::Full(issues) => issues,
+            _ => panic!("expected a full parse"),
+        };
+
+        assert!(
+            issues.is_empty(),
+            "progress lines must not be reported as issues, got: {:?}",
+            issues
+        );
     }
 
     // ── extract_package_from_path ───────────────────────────────────

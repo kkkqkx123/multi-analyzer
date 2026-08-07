@@ -50,19 +50,25 @@ impl BuildAnalyzer for PytestAnalyzer {
     }
 
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
-        let builder = self.create_command_builder(options);
+        let builder = self
+            .create_command_builder(options)
+            .with_verbose(!options.verbosity.is_minimal());
         let raw_output = builder.execute()?;
         let processor = OutputPostProcessor::from_options(options);
         let output = processor.process(&raw_output);
 
-        println!("Parsing pytest output...");
+        if !options.verbosity.is_minimal() {
+            eprintln!("Parsing pytest output...");
+        }
         let parsed = self.parser.parse_test_output(&output);
-        println!(
-            "Found {} passed, {} failed, {} skipped",
-            parsed.passed_tests.len(),
-            parsed.failed_tests.len(),
-            parsed.ignored_tests.len()
-        );
+        if !options.verbosity.is_minimal() {
+            eprintln!(
+                "Found {} passed, {} failed, {} skipped",
+                parsed.passed_tests.len(),
+                parsed.failed_tests.len(),
+                parsed.ignored_tests.len()
+            );
+        }
 
         // Convert test failures to issues for the analysis result
         let mut result = AnalysisResult::new();

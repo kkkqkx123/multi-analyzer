@@ -46,11 +46,15 @@ impl MavenParser {
             .map(|s| s.trim())
             .unwrap_or(trimmed);
 
-        // Parsing file paths and locations
-        // 格式: /path/to/File.java:[10,5] error: message
+        // Only real diagnostics carry a `[line,col]` (or `[line]`) location.
+        // Everything else ([ERROR] blank lines, "To see the full stack",
+        // "Re-run Maven using -X", "-> [Help 1]", "COMPILATION ERROR :", etc.)
+        // is Maven boilerplate and must be skipped to avoid false positives.
         if let Some(location_end) = content.find(']') {
             let location_part = &content[..location_end];
-            let rest = &content[location_end + 1..].trim();
+            // The char right after ']' is the location terminator; strip it and
+            // any leading whitespace so the message does not start with "] ".
+            let rest = content[location_end + 1..].trim_start_matches(']').trim();
 
             // Parsing file paths and line numbers
             if let Some((file_path, line_num, col_num)) = self.parse_java_location(location_part) {
@@ -65,9 +69,9 @@ impl MavenParser {
             }
         }
 
-        // Trying to parse a format without line numbers
-        // 格式: [ERROR] message
-        if !content.contains(':') || content.starts_with("Failed to execute goal") {
+        // Module-level build failure: "Failed to execute goal ... on project X: ..."
+        // This is a genuine diagnostic (no file-level location available).
+        if content.starts_with("Failed to execute goal") {
             let location = Location::new("pom.xml");
             let mut issue = Issue::new(level, content.to_string(), location);
 
@@ -378,5 +382,48 @@ Running com.example.OtherTest
         let summary = test_result.test_summary.unwrap();
         assert_eq!(summary.total, 5);
         assert_eq!(summary.failed, 1);
+    }
+
+    #[test]
+    fn test_skips_maven_boilerplate() {
+        let parser = MavenParser::new();
+        // Real diagnostic must be captured...
+        let good = parser
+            .parse_maven_issue_line("[ERROR] /src/Main.java:[8,28] cannot find symbol")
+            .unwrap();
+        assert_eq!(good.level, IssueLevel::Error);
+        assert_eq!(good.message, "cannot find symbol");
+        assert_eq!(good.location.line_number, Some(8));
+        // ...while boilerplate lines must be ignored.
+        for boilerplate in [
+            "[ERROR]",
+            "[ERROR] COMPILATION ERROR :",
+            "[ERROR] -> [Help 1]",
+            "[ERROR] To see the full stack trace of the errors.",
+            "[ERROR] Re-run Maven using the -X switch to enable full debug logging.",
+            "[ERROR] For more information about the errors and possible solutions, please read the following articles:",
+        ] {
+            assert!(
+                parser.parse_maven_issue_line(boilerplate).is_none(),
+                "boilerplate should be skipped: {boilerplate:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_real_error_message_has_no_leading_bracket() {
+        let parser = MavenParser::new();
+        let line = "[ERROR] /src/Main.java:[8,28] cannot find symbol";
+        let issue = parser.parse_maven_issue_line(line).unwrap();
+        assert_eq!(issue.message, "cannot find symbol");
+        assert!(!issue.message.starts_with(']'));
+    }
+
+    #[test]
+    fn test_module_level_build_failure_captured() {
+        let parser = MavenParser::new();
+        let line = "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.13.0:compile (default-compile) on project maven-demo: Compilation failure";
+        let issue = parser.parse_maven_issue_line(line).unwrap();
+        assert!(issue.message.contains("Failed to execute goal"));
     }
 }

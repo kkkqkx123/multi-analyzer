@@ -2,7 +2,7 @@
 //! Define a uniform interface for test execution
 
 use super::command::CommandBuilder;
-use super::types::{AnalyzeOptions, Issue, TestAnalysisResult, TestCase, TestSummary};
+use super::types::{AnalyzeOptions, Issue, TestAnalysisResult, TestCase, TestSummary, Verbosity};
 
 /// Test Analyzer Error
 #[derive(Debug)]
@@ -96,6 +96,8 @@ pub struct TestOptions {
     pub coverage: bool,
     /// Other parameters
     pub extra_args: Vec<String>,
+    /// Report verbosity (carries quiet mode through to the test command echo)
+    pub verbosity: Verbosity,
 }
 
 impl From<&AnalyzeOptions> for TestOptions {
@@ -117,6 +119,7 @@ impl From<&AnalyzeOptions> for TestOptions {
             race: false,
             coverage: false,
             extra_args: Vec::new(),
+            verbosity: options.verbosity,
         }
     }
 }
@@ -130,7 +133,9 @@ pub trait TestAnalyzer: Send + Sync {
     /// Run the test and return the parsed output
     /// Default implementation uses build_test_command + test_parser
     fn run_tests(&self, options: &TestOptions) -> Result<ParsedTestOutput, TestAnalyzerError> {
-        let builder = self.build_test_command(options);
+        let builder = self
+            .build_test_command(options)
+            .with_verbose(!options.verbosity.is_minimal());
         let output = builder
             .execute()
             .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;

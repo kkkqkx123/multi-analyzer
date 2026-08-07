@@ -957,9 +957,13 @@ impl TestOutputParser for NpmParser {
                 result.test_summary = self.parse_jest_summary(line);
             }
 
-            // Analyzing Vitest Test Results Summary
-            if line.contains("Test Files") && line.contains("tests") {
-                result.test_summary = self.parse_vitest_summary(&lines, i);
+            // Analyzing Vitest Test Results Summary.
+            // Vitest prints a "Tests  2 failed | 2 passed (4)" line; in a
+            // non-TTY run that summary is the *only* per-test information
+            // emitted, so it has to be recognised on its own rather than via
+            // the neighbouring "Test Files" line.
+            if is_vitest_tests_summary_line(line) {
+                result.test_summary = self.parse_vitest_summary(line);
             }
 
             // Analyzing Mocha Test Results Summary
@@ -1181,32 +1185,49 @@ impl NpmParser {
         })
     }
 
-    /// Analyzing Vitest Test Results Summary
-    /// Format Multiline.
-    /// " Test Files  1 passed (1)"
-    /// "      Tests  5 passed (5)"
-    fn parse_vitest_summary(&self, lines: &[&str], start_index: usize) -> Option<TestSummary> {
-        let mut passed = 0;
-        let mut failed = 0;
-        let ignored = 0;
+    /// Analyzing the Vitest "Tests" summary line.
+    ///
+    /// Vitest reports counts as a single pipe-separated line whose segments
+    /// vary with the outcome:
+    ///
+    /// ```text
+    ///       Tests  5 passed (5)
+    ///       Tests  2 failed | 2 passed (4)
+    ///       Tests  1 failed | 3 passed | 2 skipped (6)
+    /// ```
+    ///
+    /// Each status is therefore matched independently. The trailing
+    /// parenthesised value is the authoritative total when present, because it
+    /// also accounts for statuses this parser does not model individually.
+    fn parse_vitest_summary(&self, line: &str) -> Option<TestSummary> {
+        let counts = line.split('(').next().unwrap_or(line);
 
-        let passed_regex = regex::Regex::new(r"Tests\s+(\d+)\s+passed").ok()?;
-        let failed_regex = regex::Regex::new(r"(\d+)\s+failed").ok()?;
+        let count_of = |status: &str| -> usize {
+            regex::Regex::new(&format!(r"(\d+)\s+{}", status))
+                .ok()
+                .and_then(|re| re.captures(counts))
+                .and_then(|caps| caps.get(1))
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0)
+        };
 
-        // Look back a few rows from the current row
-        for line in lines.iter().skip(start_index).take(5) {
-            // 匹配 "Tests 5 passed (5)"
-            if let Some(caps) = passed_regex.captures(line) {
-                passed = caps.get(1)?.as_str().parse().ok()?;
-            }
-            // Number of failed matches
-            if let Some(caps) = failed_regex.captures(line) {
-                failed = caps.get(1)?.as_str().parse().ok()?;
-            }
+        let passed = count_of("passed");
+        let failed = count_of("failed");
+        let ignored = count_of("skipped") + count_of("todo");
+
+        let reported_total = regex::Regex::new(r"\((\d+)\)")
+            .ok()
+            .and_then(|re| re.captures(line))
+            .and_then(|caps| caps.get(1))
+            .and_then(|m| m.as_str().parse::<usize>().ok());
+
+        // A line that mentions no status at all is not a summary.
+        if passed == 0 && failed == 0 && ignored == 0 && reported_total.is_none() {
+            return None;
         }
 
         Some(TestSummary {
-            total: passed + failed + ignored,
+            total: reported_total.unwrap_or(passed + failed + ignored),
             passed,
             failed,
             ignored,
@@ -1242,9 +1263,102 @@ impl NpmParser {
     }
 }
 
+/// Report whether a line is Vitest's per-test count summary.
+///
+/// The line looks like `      Tests  2 failed | 2 passed (4)`. It must be
+/// distinguished from the neighbouring `Test Files  1 failed (1)` line, which
+/// counts *files* rather than tests and would otherwise overwrite the summary
+/// with the wrong numbers.
+fn is_vitest_tests_summary_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+
+    // `Test Files ...` also starts with "Test", so require the exact keyword.
+    let Some(rest) = trimmed.strip_prefix("Tests") else {
+        return false;
+    };
+
+    // Jest uses `Tests:` and is handled by its own branch.
+    if rest.starts_with(':') {
+        return false;
+    }
+
+    // Require whitespace right after the keyword plus at least one count.
+    rest.starts_with(char::is_whitespace)
+        && rest.contains(|c: char| c.is_ascii_digit())
+        && (rest.contains("passed") || rest.contains("failed") || rest.contains("skipped"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Vitest summary parsing ──────────────────────────────────────
+
+    #[test]
+    fn test_is_vitest_tests_summary_line() {
+        assert!(is_vitest_tests_summary_line(
+            "      Tests  2 failed | 2 passed (4)"
+        ));
+        assert!(is_vitest_tests_summary_line("      Tests  5 passed (5)"));
+
+        // "Test Files" counts files, not tests.
+        assert!(!is_vitest_tests_summary_line(" Test Files  1 failed (1)"));
+        // Jest's summary has its own branch.
+        assert!(!is_vitest_tests_summary_line("Tests: 1 failed, 2 passed"));
+        assert!(!is_vitest_tests_summary_line("   Duration  2.32s"));
+    }
+
+    #[test]
+    fn test_parse_vitest_summary_mixed_results() {
+        let parser = NpmParser::new();
+        let summary = parser
+            .parse_vitest_summary("      Tests  2 failed | 2 passed (4)")
+            .expect("summary should parse");
+
+        assert_eq!(summary.total, 4);
+        assert_eq!(summary.passed, 2);
+        assert_eq!(summary.failed, 2);
+        assert_eq!(summary.ignored, 0);
+    }
+
+    #[test]
+    fn test_parse_vitest_summary_all_passed() {
+        let parser = NpmParser::new();
+        let summary = parser
+            .parse_vitest_summary("      Tests  5 passed (5)")
+            .expect("summary should parse");
+
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.passed, 5);
+        assert_eq!(summary.failed, 0);
+    }
+
+    #[test]
+    fn test_parse_vitest_summary_with_skipped() {
+        let parser = NpmParser::new();
+        let summary = parser
+            .parse_vitest_summary("      Tests  1 failed | 3 passed | 2 skipped (6)")
+            .expect("summary should parse");
+
+        assert_eq!(summary.total, 6);
+        assert_eq!(summary.passed, 3);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.ignored, 2);
+    }
+
+    /// Regression test: piped Vitest output carries no per-case lines, so the
+    /// summary is the only signal that tests failed.
+    #[test]
+    fn test_parse_test_output_non_tty_vitest() {
+        let parser = NpmParser::new();
+        let output = " Test Files  1 failed (1)\n      Tests  2 failed | 2 passed (4)\n   Duration  2.32s\n";
+        let parsed = <NpmParser as TestOutputParser>::parse_test_output(&parser, output);
+
+        let summary = parsed.test_summary.expect("summary should be detected");
+        assert_eq!(summary.failed, 2, "failures must survive the file-count line");
+        assert_eq!(summary.passed, 2);
+        assert_eq!(summary.total, 4);
+    }
 
     #[test]
     fn test_parse_typescript_parentheses() {

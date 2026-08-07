@@ -153,6 +153,52 @@ impl PytestParser {
             });
         }
 
+        // Format with failures first + skipped:
+        // "2 failed, 3 passed, 1 skipped in 0.12s"
+        // Must precede the failures-first (no skipped) pattern below, otherwise
+        // its `.*?in` would skip over the skipped count.
+        let re6 = regex::Regex::new(
+            r"(\d+)\s+failed.*?(\d+)\s+passed.*?(\d+)\s+skipped.*?in\s+([\d.]+)s",
+        )
+        .ok()?;
+        if let Some(caps) = re6.captures(line) {
+            let failed: usize = caps.get(1)?.as_str().parse().ok()?;
+            let passed: usize = caps.get(2)?.as_str().parse().ok()?;
+            let skipped: usize = caps.get(3)?.as_str().parse().ok()?;
+            let execution_time: f64 = caps.get(4)?.as_str().parse().ok()?;
+
+            return Some(TestSummary {
+                total: passed + failed + skipped,
+                passed,
+                failed,
+                ignored: skipped,
+                measured: 0,
+                filtered: 0,
+                execution_time: Some(execution_time),
+            });
+        }
+
+        // Format with failures first (pytest prints this when tests fail):
+        // "2 failed, 3 passed in 0.12s"
+        // Must be tried before the "N passed in Xs" pattern below, which would
+        // otherwise match the trailing "3 passed in 0.12s" and drop the failures.
+        let re5 = regex::Regex::new(r"(\d+)\s+failed.*?(\d+)\s+passed.*?in\s+([\d.]+)s").ok()?;
+        if let Some(caps) = re5.captures(line) {
+            let failed: usize = caps.get(1)?.as_str().parse().ok()?;
+            let passed: usize = caps.get(2)?.as_str().parse().ok()?;
+            let execution_time: f64 = caps.get(3)?.as_str().parse().ok()?;
+
+            return Some(TestSummary {
+                total: passed + failed,
+                passed,
+                failed,
+                ignored: 0,
+                measured: 0,
+                filtered: 0,
+                execution_time: Some(execution_time),
+            });
+        }
+
         // Format with only passed: "5 passed in 0.08s"
         let re4 = regex::Regex::new(r"(\d+)\s+passed\s+in\s+([\d.]+)s").ok()?;
 
@@ -463,5 +509,28 @@ FAILED test_example.py::test_division - AssertionError: assert 1 == 0
         assert_eq!(result.failed_tests.len(), 1);
         assert_eq!(result.ignored_tests.len(), 1);
         assert!(result.test_summary.is_some());
+    }
+
+    #[test]
+    fn test_parse_test_summary_failures_first() {
+        let parser = PytestParser::new();
+        // Pytest prints failures before passes when tests fail.
+        let line = "================== 2 failed, 3 passed in 0.12s ==================";
+        let summary = parser.parse_test_summary(line).unwrap();
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.passed, 3);
+        assert_eq!(summary.failed, 2);
+        assert_eq!(summary.ignored, 0);
+    }
+
+    #[test]
+    fn test_parse_test_summary_failures_first_with_skipped() {
+        let parser = PytestParser::new();
+        let line = "2 failed, 3 passed, 1 skipped in 0.12s";
+        let summary = parser.parse_test_summary(line).unwrap();
+        assert_eq!(summary.total, 6);
+        assert_eq!(summary.passed, 3);
+        assert_eq!(summary.failed, 2);
+        assert_eq!(summary.ignored, 1);
     }
 }

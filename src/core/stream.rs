@@ -46,21 +46,19 @@ pub fn run_analyzer(
 
     let mut guard = TimingGuard::start(tech, &command_str);
 
-    if options.report_format.is_raw() {
-        let result = builder.execute_streaming(FilterMode::Passthrough)?;
-        let exit_code = result.exit_code;
-        let success = exit_code == 0;
-        guard.set_output_bytes(0);
-        guard.complete(Some(exit_code), 0, success);
-        let mut analysis = AnalysisResult::new();
-        analysis.exit_code = Some(exit_code);
-        analysis.command_failed = !success;
-        return Ok(analysis);
-    }
+    // NOTE: `raw` / `raw-json` are structured *report* formats
+    // (LEVEL|CODE|FILE:LINE:COL|MESSAGE and JSON lines respectively), not a
+    // passthrough of the child process output. They therefore go through the
+    // exact same parse pipeline as the other formats; only the reporter differs.
 
     let processor = resolve_processor(builder, options);
     let line_filter = PostProcessLineFilter::new(processor);
-    let result = builder.execute_streaming(FilterMode::Streaming(Box::new(line_filter)))?;
+    // Suppress the "Running: ..." echo under quiet mode so machine-readable
+    // output stays clean. The echo is written to stderr regardless; quiet mode
+    // simply flips the `verbose` flag before execution.
+    let mut exec_builder = builder.clone();
+    exec_builder = exec_builder.with_verbose(!options.verbosity.is_minimal());
+    let result = exec_builder.execute_streaming(FilterMode::Streaming(Box::new(line_filter)))?;
 
     let exit_code = result.exit_code;
     let total_output = result.filtered.len()

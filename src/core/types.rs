@@ -358,14 +358,37 @@ impl TestAnalysisResult {
         }
     }
 
-    /// Check if all tests passed (no failures and no compile issues)
+    /// Check if all tests passed (no failures and no compile issues).
+    ///
+    /// The per-case list is not authoritative on its own: several runners only
+    /// print aggregate counts when their output is piped (Vitest, for example,
+    /// emits `Tests  2 failed | 2 passed (4)` and no per-case lines outside a
+    /// TTY). Trusting `failed_tests` alone reported such runs as fully green,
+    /// so a failure count reported in the summary counts as a failure too.
     pub fn all_passed(&self) -> bool {
-        self.failed_tests.is_empty() && self.compile_result.total_issues == 0
+        let summary_reports_failure = self
+            .test_summary
+            .as_ref()
+            .is_some_and(|summary| summary.failed > 0);
+
+        self.failed_tests.is_empty()
+            && !summary_reports_failure
+            && self.compile_result.total_issues == 0
     }
 
-    /// Get total test count
+    /// Get total test count.
+    ///
+    /// Falls back to the runner-reported summary when per-case lines are not
+    /// available, which is the norm for piped (non-TTY) output.
     pub fn total_tests(&self) -> usize {
-        self.passed_tests.len() + self.failed_tests.len() + self.ignored_tests.len()
+        let from_cases = self.passed_tests.len() + self.failed_tests.len() + self.ignored_tests.len();
+        if from_cases > 0 {
+            return from_cases;
+        }
+
+        self.test_summary
+            .as_ref()
+            .map_or(0, |summary| summary.total)
     }
 }
 
@@ -1182,6 +1205,46 @@ mod types_tests {
         tar.failed_tests
             .push(TestCase::new("test_fail", TestStatus::Failed));
         assert!(!tar.all_passed());
+    }
+
+    /// Regression test: runners that only emit aggregate counts (Vitest outside
+    /// a TTY) must not be reported as green when the summary shows failures.
+    #[test]
+    fn test_all_passed_honours_summary_failures() {
+        let mut tar = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        tar.test_summary = Some(TestSummary {
+            total: 4,
+            passed: 2,
+            failed: 2,
+            ignored: 0,
+            measured: 0,
+            filtered: 0,
+            execution_time: None,
+        });
+
+        assert!(
+            tar.failed_tests.is_empty(),
+            "precondition: no per-case data available"
+        );
+        assert!(!tar.all_passed(), "summary failures must mark the run as failed");
+        assert_eq!(tar.total_tests(), 4, "total should fall back to the summary");
+    }
+
+    #[test]
+    fn test_all_passed_with_green_summary() {
+        let mut tar = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        tar.test_summary = Some(TestSummary {
+            total: 5,
+            passed: 5,
+            failed: 0,
+            ignored: 0,
+            measured: 0,
+            filtered: 0,
+            execution_time: None,
+        });
+
+        assert!(tar.all_passed());
+        assert_eq!(tar.total_tests(), 5);
     }
 
     #[test]

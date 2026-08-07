@@ -329,9 +329,15 @@ impl GoParser {
                 continue;
             }
 
-            // Parse compilation errors using build error parser
-            if let Some(issue) = self.parse_go_build_error(line) {
-                result.compile_issues.push(issue);
+            // Parse compilation errors using build error parser.
+            // Only consider non-indented lines: real Go compile errors are
+            // emitted at column 0, whereas indented `file:line: msg` lines are
+            // assertion-detail output (e.g. `  main_test.go:14: add(2,3) = 5`)
+            // that must not be mistaken for compile issues.
+            if !line.starts_with(char::is_whitespace) {
+                if let Some(issue) = self.parse_go_build_error(line) {
+                    result.compile_issues.push(issue);
+                }
             }
         }
 
@@ -626,5 +632,33 @@ ok  	example.com/myproject	0.061s
         let parser = GoParser::new();
         let output = "./main.go:10:5: undefined: foo";
         assert_eq!(parser.detect_command_type(output), GoCommandType::Build);
+    }
+
+    #[test]
+    fn test_indented_failure_detail_not_compile_issue() {
+        let parser = GoParser::new();
+        let output = "\
+=== RUN   TestSubtract
+    main_test.go:14: add(2,3) = 5, want 0
+--- FAIL: TestSubtract (0.00s)
+FAIL";
+        let result = parser.parse_go_test_output(output);
+        // The indented `main_test.go:14: ...` line is assertion detail, not a
+        // compile error, so compile_issues must stay empty.
+        assert!(
+            result.compile_issues.is_empty(),
+            "indented failure detail must not be a compile issue"
+        );
+    }
+
+    #[test]
+    fn test_build_failure_in_test_output_captured() {
+        let parser = GoParser::new();
+        // A real (column-0) compile error during `go test ./...` must be captured.
+        let output = "\
+# go-demo/cmd/bad
+cmd/bad/main.go:6:10: undefined: undefinedSymbol";
+        let result = parser.parse_go_test_output(output);
+        assert_eq!(result.compile_issues.len(), 1);
     }
 }

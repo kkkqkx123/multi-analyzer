@@ -19,7 +19,7 @@ use analyzer::{
         self, AnalysisResult, AnalyzeOptions, ReporterFactory, SubCommand, TechStack, TestOptions,
         Verbosity,
     },
-    plugins,
+    discover, plugins,
 };
 
 fn main() {
@@ -29,6 +29,10 @@ fn main() {
         show_help();
         std::process::exit(1);
     }
+
+    // Capture the original first token so the supportability check below is
+    // stable even after `run` rewrites the argument vector.
+    let original_first = args[1].clone();
 
     if args[1] == "config" {
         handle_config(&args);
@@ -44,10 +48,132 @@ fn main() {
     // Load configuration from file (global + project merge)
     let config = config::ConfigLoader::new().load();
 
+    // --- Discovery subcommands ---
+    // `rewrite` prints the equivalent invocation without running it, while
+    // `run` resolves the tech stack and continues into the normal pipeline.
+    if args[1] == "rewrite" {
+        handle_rewrite(&args, &config);
+        return;
+    }
+
+    let args = if args[1] == "run" {
+        match resolve_run_args(&args, &config) {
+            Some(resolved) => resolved,
+            // resolve_run_args already reported the reason.
+            None => std::process::exit(1),
+        }
+    } else {
+        args
+    };
+
+    // Direct/resolved mode: the first token must be a supported tech stack.
+    // An unknown first token (neither a known subcommand nor a valid tech
+    // stack, and not a global flag) is reported as "subcommand not supported"
+    // with exit code 2, per the reference documentation.
+    if !original_first.starts_with('-')
+        && !matches!(
+            original_first.as_str(),
+            "run" | "rewrite" | "config" | "stats"
+        )
+        && original_first.parse::<TechStack>().is_err()
+    {
+        eprintln!(
+            "Error: unsupported subcommand or tech stack '{}'",
+            original_first
+        );
+        eprintln!("Run 'analyzer --help' to see supported subcommands and tech stacks.");
+        std::process::exit(2);
+    }
+
     // Parse arguments (CLI overrides config)
     let (tech_stack, options) = parse_arguments(&args, &config);
 
     run_orchestrator(tech_stack, options, &config);
+}
+
+/// Resolve `analyzer run "<raw command>"` into the equivalent direct-mode
+/// argument vector: `analyzer <tech-stack> "<subcommand>" [options]`.
+///
+/// Returns `None` when no rule matches, after printing the reason to stderr.
+fn resolve_run_args(args: &[String], config: &config::AppConfig) -> Option<Vec<String>> {
+    let raw_cmd = match args.get(2) {
+        Some(cmd) if !cmd.trim().is_empty() => cmd,
+        _ => {
+            eprintln!("Error: 'run' requires a command, e.g. analyzer run \"cargo check\"");
+            return None;
+        }
+    };
+
+    let (tech_stack, subcommand, extra_args) = resolve_raw_command(raw_cmd, config)?;
+
+    // Rebuild the argv as if the user had typed the direct form, then append
+    // any analyzer flags that followed the command string.
+    let mut resolved = vec![args[0].clone(), tech_stack.as_str().to_string()];
+    let mut command = subcommand;
+    for extra in extra_args {
+        command.push(' ');
+        command.push_str(&extra);
+    }
+    resolved.push(command);
+    resolved.extend(args.iter().skip(3).cloned());
+
+    Some(resolved)
+}
+
+/// Print the analyzer-equivalent form of a raw shell command without running it.
+fn handle_rewrite(args: &[String], config: &config::AppConfig) {
+    let raw_cmd = match args.get(2) {
+        Some(cmd) if !cmd.trim().is_empty() => cmd,
+        _ => {
+            eprintln!("Error: 'rewrite' requires a command, e.g. analyzer rewrite \"cargo check\"");
+            std::process::exit(1);
+        }
+    };
+
+    let Some((tech_stack, subcommand, extra_args)) = resolve_raw_command(raw_cmd, config) else {
+        std::process::exit(1);
+    };
+
+    let mut command = subcommand;
+    for extra in extra_args {
+        command.push(' ');
+        command.push_str(&extra);
+    }
+
+    println!("analyzer {} \"{}\"", tech_stack.as_str(), command);
+}
+
+/// Shared resolution step for `run` and `rewrite`.
+///
+/// Only the first segment of a compound command is classified; the remaining
+/// segments are reported so the caller knows they were dropped.
+fn resolve_raw_command(
+    raw_cmd: &str,
+    config: &config::AppConfig,
+) -> Option<(TechStack, String, Vec<String>)> {
+    let segments = discover::lexer::split_on_operators(raw_cmd);
+    let first = segments.first().map(String::as_str).unwrap_or(raw_cmd);
+
+    let resolved = discover::rewrite_command_with_config(first, &config.commands);
+
+    if resolved.is_none() {
+        eprintln!(
+            "Error: no matching rule for command: {}\n\
+             Only build tool commands from supported tech stacks are supported \
+             (e.g. \"cargo check\", \"npm run lint\", \"go vet ./...\").",
+            first.trim()
+        );
+        return None;
+    }
+
+    if segments.len() > 1 {
+        eprintln!(
+            "Note: only the first segment was used; {} trailing segment(s) ignored.",
+            segments.len() - 1
+        );
+    }
+
+    resolved
 }
 
 fn handle_config(args: &[String]) {
@@ -140,7 +266,7 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
 
     // Print supported commands for this analyzer
     if !options.verbosity.is_minimal() {
-        println!(
+        eprintln!(
             "Supported commands: {}",
             analyzer.supported_commands().join(", ")
         );
@@ -152,9 +278,9 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
     // Print subcommand category if available
     if let Some(ref cmd) = options.subcommand {
         if !options.verbosity.is_minimal() {
-            println!("Command category: {:?}", cmd.category());
+            eprintln!("Command category: {:?}", cmd.category());
             if cmd.is_custom() {
-                println!("Using custom command: {}", cmd.as_str());
+                eprintln!("Using custom command: {}", cmd.as_str());
             }
         }
     }
@@ -164,7 +290,7 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
         let ts_str = tech_stack.as_str();
         if let Some(framework) = config.test_framework_for(ts_str) {
             if !options.verbosity.is_minimal() {
-                println!("Test framework: {}", framework);
+                eprintln!("Test framework: {}", framework);
             }
         }
         // Run test analysis
@@ -176,7 +302,7 @@ fn run_orchestrator(tech_stack: TechStack, options: AnalyzeOptions, config: &con
 
     let tracking_summary = core::tracking::stats().summary();
     if !tracking_summary.contains("0 total") && !options.verbosity.is_minimal() {
-        println!("\n{}", tracking_summary);
+        eprintln!("\n{}", tracking_summary);
     }
 }
 
@@ -190,6 +316,8 @@ const VALUE_FLAGS: &[&str] = &[
     "--filter-paths",
     "--output",
     "-o",
+    "--file",
+    "-f",
     "--format",
     "--max-issues",
     // Cargo workspace / target / feature selection
@@ -289,9 +417,12 @@ fn parse_options_from_args(
                     options.filter_paths = v.split(',').map(|s| s.trim().to_string()).collect();
                 }
             }
-            "--output" | "-o" => {
+            "--output" | "-o" | "--file" | "-f" => {
                 if let Some(v) = value {
                     options.output_file = Some(v.clone());
+                    // An explicit output path overrides the stdout default,
+                    // otherwise the report would only ever reach stdout.
+                    options.stdout_only = false;
                 }
             }
             "--format" => {
@@ -509,7 +640,7 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
             // Check if the command is restricted to specific tech stacks
             if cmd_config.tech_stacks.is_empty() || cmd_config.tech_stacks.contains(&tech_stack_str)
             {
-                println!(
+                eprintln!(
                     "Using configured command '{}' for alias '{}'",
                     cmd_config.exec, command_str
                 );
@@ -520,7 +651,7 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
 
     // Resolve script names to actual frameworks via tech_stacks config
     if let Some(resolved) = config.resolve_script(&tech_stack_str, &command_str) {
-        println!(
+        eprintln!(
             "Resolved script '{}' to framework '{}' via tech_stacks.{}",
             command_str, resolved, tech_stack_str
         );
@@ -562,7 +693,7 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
         .map(|s| s.as_str())
         .unwrap_or("default");
     if !options.verbosity.is_minimal() {
-        println!(
+        eprintln!(
             "Analyzing project with {} {}...",
             analyzer.name(),
             subcommand_name
@@ -570,7 +701,7 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
 
         // Use the parser method to demonstrate it's being used
         let _parser = analyzer.parser();
-        println!("Using parser: {}", std::any::type_name_of_val(_parser));
+        eprintln!("Using parser: {}", std::any::type_name_of_val(_parser));
     } else {
         let _parser = analyzer.parser();
     }
@@ -581,8 +712,8 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
     match analyzer.analyze(options) {
         Ok(result) => {
             if !options.verbosity.is_minimal() {
-                println!("\nAnalysis complete!");
-                println!("Total issues: {}", result.total_issues);
+                eprintln!("\nAnalysis complete!");
+                eprintln!("Total issues: {}", result.total_issues);
             }
 
             // Generating reports
@@ -610,7 +741,7 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
                     std::process::exit(1);
                 }
 
-                println!("Report written to: {}", output_path);
+                eprintln!("Report written to: {}", output_path);
             }
 
             // Print summary
@@ -638,18 +769,18 @@ fn run_test_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOption
         std::process::exit(1);
     }
 
-    println!("Running tests for {}...", analyzer.name());
+    eprintln!("Running tests for {}...", analyzer.name());
 
     // Convert AnalyzeOptions to TestOptions
     let test_options = TestOptions::from(options);
 
     match test_analyzer.run_tests(&test_options) {
         Ok(test_output) => {
-            println!("\nTest analysis complete!");
-            println!("Compile issues: {}", test_output.compile_issues.len());
+            eprintln!("\nTest analysis complete!");
+            eprintln!("Compile issues: {}", test_output.compile_issues.len());
 
             if let Some(ref summary) = test_output.test_summary {
-                println!(
+                eprintln!(
                     "Tests: {} total, {} passed, {} failed, {} ignored",
                     summary.total, summary.passed, summary.failed, summary.ignored
                 );
@@ -681,7 +812,7 @@ fn run_test_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOption
                     std::process::exit(1);
                 }
 
-                println!("Test report written to: {}", output_path);
+                eprintln!("Test report written to: {}", output_path);
             }
         }
         Err(e) => {
@@ -698,27 +829,37 @@ fn show_help() {
     println!("  analyzer <tech-stack> <command> [options]");
     println!();
     println!("Subcommands:");
+    println!("  run        Auto-detect the tech stack from a raw shell command and analyze it");
+    println!("  rewrite    Print the equivalent analyzer command without executing it");
     println!("  config     Show or initialize configuration");
     println!("  stats      Show analysis tracking statistics");
     println!();
     println!("Exit codes:");
     println!("  0  Success");
-    println!("  1  Execution failed");
+    println!("  1  Execution failed / no matching rule");
     println!();
     println!("Tech Stacks:");
-    println!("  cargo         Rust/Cargo projects");
+    println!("  cargo         Rust/Cargo projects            (aliases: rust)");
+    println!("  cargo-nextest Rust nextest test framework    (aliases: nextest)");
     println!("  mypy          Python/Mypy projects");
-    println!("  pytest        Python/Pytest projects");
-    println!("  npm           Node.js/npm projects");
+    println!("  pytest        Python/Pytest projects         (aliases: py.test)");
+    println!("  ruff          Python linter                  (aliases: python-lint)");
+    println!("  black         Python code formatter");
+    println!("  npm           Node.js/npm projects           (aliases: node)");
     println!("  pnpm          Node.js/pnpm projects");
     println!("  yarn          Node.js/yarn projects");
-    println!("  go            Go projects");
-    println!("  maven         Java/Maven projects");
-    println!("  gradle        Java/Gradle projects");
-    println!("  cmake         C++/CMake projects");
-    println!("  gcc           C++/GCC projects");
-    println!("  clang         C++/Clang projects");
-    println!("  msvc          C++/MSVC projects");
+    println!("  go            Go projects                    (aliases: golang)");
+    println!("  golangci-lint Go linter");
+    println!("  dotnet        .NET / C# / MSBuild projects   (aliases: msbuild, csharp)");
+    println!("  rubocop       Ruby Rubocop linter            (aliases: ruby, rails)");
+    println!("  rspec         Ruby RSpec test framework");
+    println!("  maven         Java/Maven projects            (aliases: mvn)");
+    println!("  gradle        Java/Gradle projects           (aliases: gradlew)");
+    println!("  cmake         C++/CMake projects             (aliases: cmake-build)");
+    println!("  gcc           C++/GCC projects               (aliases: g++)");
+    println!("  clang         C++/Clang projects             (aliases: clang++)");
+    println!("  clang-format  C++/ClangFormat formatter      (aliases: cpp-format)");
+    println!("  msvc          C++/MSVC projects              (aliases: cl)");
     println!();
     println!("The <command> is passed directly to the build tool.");
     println!("Use quotes for commands with spaces.");
@@ -730,8 +871,8 @@ fn show_help() {
     println!("  --filter-paths <paths>  Filter by file paths (comma-separated)");
     println!("  --verbose               Show all issues without truncation");
     println!("  -q, --quiet             Minimal output (summary only)");
-    println!("  -o, --output <file>     Output file (default: analysis_report.md/.json/.html)");
-    println!("  --stdout                Output to stdout only, do not write file");
+    println!("  -o, --output, -f <file> Write the report to a file instead of stdout");
+    println!("  --stdout                No-op; stdout is the default");
     println!("  --format <format>       Report format: markdown, json, html, raw, raw-json (default: markdown)");
     println!("  --no-short-circuit      Disable success short-circuit (always show full report)");
     println!("  --max-issues <N>        Limit analysis to the first N issues (default: unlimited)");
@@ -793,41 +934,41 @@ fn show_help() {
 }
 
 fn print_summary(result: &AnalysisResult, verbosity: core::Verbosity) {
-    println!("\nTotal issues: {}", result.total_issues);
+    eprintln!("\nTotal issues: {}", result.total_issues);
 
     if verbosity.is_minimal() {
         return;
     }
 
     // Use error_count() and warning_count() methods
-    println!("  Errors: {}", result.error_count());
-    println!("  Warnings: {}", result.warning_count());
+    eprintln!("  Errors: {}", result.error_count());
+    eprintln!("  Warnings: {}", result.warning_count());
 
     // Use errors() and warnings() methods for detailed counts
     let errors = result.errors();
     let warnings = result.warnings();
-    println!("  (via errors() method: {})", errors.len());
-    println!("  (via warnings() method: {})", warnings.len());
+    eprintln!("  (via errors() method: {})", errors.len());
+    eprintln!("  (via warnings() method: {})", warnings.len());
 
     for (level, count) in &result.issues_by_level {
-        println!("  {}s: {}", level, count);
+        eprintln!("  {}s: {}", level, count);
     }
 
     if !result.issues_by_file.is_empty() {
-        println!("\nTop files with issues:");
+        eprintln!("\nTop files with issues:");
         let mut files: Vec<_> = result.issues_by_file.iter().collect();
         files.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
 
         for (file, issues) in files.iter().take(5) {
-            println!("  {}: {} issues", file, issues.len());
+            eprintln!("  {}: {} issues", file, issues.len());
         }
     }
 
     // Print first few errors if any
     if !errors.is_empty() {
-        println!("\nFirst {} error(s):", std::cmp::min(3, errors.len()));
+        eprintln!("\nFirst {} error(s):", std::cmp::min(3, errors.len()));
         for error in errors.iter().take(3) {
-            println!("  - [{}] {}", error.location.file_path, error.message);
+            eprintln!("  - [{}] {}", error.location.file_path, error.message);
         }
     }
 }
