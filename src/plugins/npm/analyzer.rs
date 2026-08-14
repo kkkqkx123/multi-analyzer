@@ -92,7 +92,7 @@ impl BuildAnalyzer for NpmAnalyzer {
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
         let builder = self.package_manager.build_command(options);
         let result = run_analyzer(&builder, &self.parser, options)?;
-        println!("Found {} issues", result.total_issues);
+        eprintln!("Found {} issues", result.total_issues);
         Ok(result)
     }
 

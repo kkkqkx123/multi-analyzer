@@ -42,11 +42,6 @@ impl ClangAnalyzer {
             builder = builder.arg(format!("-std={}", std_ver));
         }
 
-        // Add JSON output option if requested
-        if options.json_output {
-            builder = builder.arg("-fdiagnostics-format=json");
-        }
-
         // Add include paths
         for include_path in &options.include_paths {
             builder = builder.arg("-I").arg(include_path);
@@ -60,6 +55,12 @@ impl ClangAnalyzer {
         // Add source files
         for file in &options.target_files {
             builder = builder.arg(file);
+        }
+
+        // Run from the source directory when requested (paths in the
+        // subcommand / --target-files are then resolved relative to it).
+        if let Some(dir) = options.source_dir.as_deref() {
+            builder = builder.current_dir(dir);
         }
 
         builder
@@ -84,7 +85,7 @@ impl BuildAnalyzer for ClangAnalyzer {
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
         let builder = self.create_command_builder(options);
         let result = run_analyzer(&builder, &self.parser, options)?;
-        println!("Found {} issues", result.total_issues);
+        eprintln!("Found {} issues", result.total_issues);
         Ok(result)
     }
 

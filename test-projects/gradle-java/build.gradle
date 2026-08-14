@@ -1,0 +1,46 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.example'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+// Show unchecked/deprecation warnings so the analyzer can parse them
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xlint:unchecked', '-Xlint:deprecation']
+}
+
+// src/broken/java contains Broken.java with deliberate compile errors.
+// It is only included when building with `-Pbroken`:
+//   gradle -Pbroken compileJava
+//   analyzer gradle "-Pbroken compileJava"
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+            if (project.hasProperty('broken')) {
+                srcDir 'src/broken/java'
+            }
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+    // Print per-test event lines so the analyzer can parse pass/fail results:
+    //   com.example.AppTest > testGetName PASSED
+    //   com.example.UtilsTest > testFormatDate FAILED
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat 'full'
+    }
+}

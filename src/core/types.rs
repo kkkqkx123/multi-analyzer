@@ -334,17 +334,26 @@ impl TestSummary {
 }
 
 /// Extending AnalysisResult to support test information
+///
+/// Responsibility split: `test_summary` carries the authoritative statistics
+/// as declared by the test runner (see `total_tests`), while the per-case
+/// lists (`failed_tests`, `passed_tests`, `ignored_tests`) are detail records
+/// only. Per-case granularity varies by runner: some emit one entry per test
+/// method (Cargo, Go, Gradle), while Maven aggregates whole classes for
+/// passing tests (surefire text output has no per-method PASSED lines) and
+/// reports only failing methods. The detail lists therefore must never be
+/// used as the source of aggregate counts.
 #[derive(Debug, Default)]
 pub struct TestAnalysisResult {
     /// Problems at the compilation stage
     pub compile_result: AnalysisResult,
-    /// Test Summary
+    /// Test Summary (authoritative statistics declared by the runner)
     pub test_summary: Option<TestSummary>,
-    /// Failed Test Cases
+    /// Failed Test Cases (detail only; granularity varies by runner)
     pub failed_tests: Vec<TestCase>,
-    /// Test cases passed
+    /// Test cases passed (detail only; granularity varies by runner)
     pub passed_tests: Vec<TestCase>,
-    /// Neglected Test Cases
+    /// Neglected Test Cases (detail only; granularity varies by runner)
     pub ignored_tests: Vec<TestCase>,
     /// Availability of test output
     pub has_test_output: bool,
@@ -376,19 +385,29 @@ impl TestAnalysisResult {
             && self.compile_result.total_issues == 0
     }
 
-    /// Get total test count.
+    /// Number of test cases collected by the parser into the detail lists.
     ///
-    /// Falls back to the runner-reported summary when per-case lines are not
-    /// available, which is the norm for piped (non-TTY) output.
-    pub fn total_tests(&self) -> usize {
-        let from_cases = self.passed_tests.len() + self.failed_tests.len() + self.ignored_tests.len();
-        if from_cases > 0 {
-            return from_cases;
-        }
+    /// This is a completeness metric, not a statistics source: per-case
+    /// granularity varies by runner and the lists can be partially or fully
+    /// empty (e.g. Maven records whole classes for passing tests, and runners
+    /// like Vitest emit no per-case lines at all when piped). Use `total_tests`
+    /// for authoritative counts.
+    pub fn collected_tests(&self) -> usize {
+        self.passed_tests.len() + self.failed_tests.len() + self.ignored_tests.len()
+    }
 
-        self.test_summary
-            .as_ref()
-            .map_or(0, |summary| summary.total)
+    /// Get authoritative total test count.
+    ///
+    /// The runner-declared summary is the single source of truth for
+    /// statistics; per-case lines are detail records that may be incomplete
+    /// (see `collected_tests`). The detail count is used only as a fallback
+    /// when the runner emitted no summary (e.g. a crashed run that still
+    /// printed failing cases).
+    pub fn total_tests(&self) -> usize {
+        match self.test_summary {
+            Some(ref summary) => summary.total,
+            None => self.collected_tests(),
+        }
     }
 }
 
@@ -443,6 +462,21 @@ impl TechStack {
             TechStack::ClangFormat => "clang-format",
             TechStack::Msvc => "msvc",
         }
+    }
+
+    /// True when the analyzer has a sensible default command and can be driven
+    /// purely by build options (no subcommand required). All C++ analyzers
+    /// fall back to a default command when the subcommand is absent, so an
+    /// invocation like `analyzer cmake --build-dir out` is valid.
+    pub fn allows_default_command(&self) -> bool {
+        matches!(
+            self,
+            TechStack::CMake
+                | TechStack::Gcc
+                | TechStack::Clang
+                | TechStack::ClangFormat
+                | TechStack::Msvc
+        )
     }
 }
 
@@ -568,6 +602,10 @@ impl Verbosity {
 #[derive(Debug, Default, Clone)]
 pub struct AnalyzeOptions {
     pub subcommand: Option<SubCommand>,
+    /// The raw tech stack string as typed by the user (e.g. "ruby", "rails",
+    /// "rubocop"). Kept separate from the resolved `TechStack` enum so plugins
+    /// can recover the original alias for command construction.
+    pub raw_tech_stack: Option<String>,
     pub filter_warnings: bool,
     pub filter_paths: Vec<String>,
     pub noise_patterns: Vec<String>,
@@ -590,7 +628,6 @@ pub struct AnalyzeOptions {
     pub include_paths: Vec<String>,
     pub defines: Vec<String>,
     pub cpp_standard: Option<String>,
-    pub json_output: bool,
     /// Report output format: markdown, json, or html
     pub report_format: ReportFormat,
     /// Enable success short-circuit: when no issues found, output a single-line confirmation
@@ -1227,7 +1264,7 @@ mod types_tests {
             "precondition: no per-case data available"
         );
         assert!(!tar.all_passed(), "summary failures must mark the run as failed");
-        assert_eq!(tar.total_tests(), 4, "total should fall back to the summary");
+        assert_eq!(tar.total_tests(), 4, "the runner summary is authoritative");
     }
 
     #[test]
@@ -1256,7 +1293,31 @@ mod types_tests {
             .push(TestCase::new("t2", TestStatus::Failed));
         tar.ignored_tests
             .push(TestCase::new("t3", TestStatus::Ignored(None)));
+        // Without a summary, the detail count is used as a fallback.
         assert_eq!(tar.total_tests(), 3);
+        assert_eq!(tar.collected_tests(), 3);
+    }
+
+    /// Regression test: a partially collected detail list (Maven records
+    /// passing classes, not passing methods) must not shadow the
+    /// runner-declared total.
+    #[test]
+    fn test_total_tests_prefers_summary_over_partial_details() {
+        let mut tar = TestAnalysisResult::from_compile_result(AnalysisResult::new());
+        tar.test_summary = Some(TestSummary {
+            total: 2,
+            passed: 1,
+            failed: 1,
+            ignored: 0,
+            measured: 0,
+            filtered: 0,
+            execution_time: None,
+        });
+        // Only the failing method was collected; the passing class is absent.
+        tar.failed_tests
+            .push(TestCase::new("com.example.AppTest::testFailingCase", TestStatus::Failed));
+        assert_eq!(tar.total_tests(), 2, "summary total is authoritative");
+        assert_eq!(tar.collected_tests(), 1, "detail lists stay as collected");
     }
 
     // ── TechStack FromStr ───────────────────────────────────────────

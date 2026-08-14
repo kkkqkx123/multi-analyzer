@@ -67,7 +67,6 @@ fn default_analyze_options(subcommand: &str) -> analyzer::core::AnalyzeOptions {
         include_paths: vec![],
         defines: vec![],
         cpp_standard: None,
-        json_output: false,
         report_format: analyzer::core::ReportFormat::Markdown,
         ..analyzer::core::AnalyzeOptions::default()
     }

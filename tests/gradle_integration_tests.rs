@@ -303,3 +303,40 @@ fn test_gradle_parser_specific_patterns() {
         }
     }
 }
+
+#[test]
+fn test_gradle_test_sample_parse_statistics() {
+    use analyzer::core::TestOutputParser;
+    use analyzer::plugins::java::gradle::parser::GradleParser;
+
+    // The gradle_test_sample uses the real Gradle 8 two-part output format
+    // ("AppTest > testApp() PASSED"). The parser must extract the test
+    // statistics and must not report test event lines as compile issues.
+    let parser = GradleParser::new();
+    let output = read_sample("gradle_test_sample");
+    let parsed = parser.parse_test_output(&output);
+
+    let summary = parsed
+        .test_summary
+        .expect("test summary should be parsed from sample output");
+    assert_eq!(summary.total, 3);
+    assert_eq!(summary.passed, 2);
+    assert_eq!(summary.failed, 1);
+    assert_eq!(summary.ignored, 0);
+
+    assert_eq!(parsed.failed_tests.len(), 1);
+    assert_eq!(parsed.failed_tests[0].name, "AppTest::testFailure()");
+    assert_eq!(parsed.passed_tests.len(), 2);
+    assert!(parsed.passed_tests
+        .iter()
+        .any(|t| t.name == "AppTest::testApp()"));
+    assert!(parsed.passed_tests
+        .iter()
+        .any(|t| t.name == "UtilsTest::testUtils()"));
+
+    assert!(
+        parsed.compile_issues.is_empty(),
+        "test event lines must not be compile issues, got: {:?}",
+        parsed.compile_issues
+    );
+}

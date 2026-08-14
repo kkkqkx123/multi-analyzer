@@ -4,35 +4,19 @@
 
 ## Summary
 
-- **Total Issues**: 13
-- **Errors**: 13
+- **Total Issues**: 2
+- **Errors**: 2
 - **Warnings**: 0
 - **Info**: 0
-- **Files with Issues**: 2
+- **Files with Issues**: 1
 
 ## Issue Details (Grouped by File)
-
-### build.gradle
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| - | - | Error | BUILD FAILED in 1s |
 
 ### /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 7 | 0 | Error | cannot find symbol |
-| 7 | 0 | Error | cannot find symbol |
-| 7 | 0 | Error | cannot find symbol |
-| 10 | 0 | Error | cannot find symbol |
-| 10 | 0 | Error | cannot find symbol |
-| 10 | 0 | Error | cannot find symbol |
-| 7 | 0 | Error | cannot find symbol |
-| 7 | 0 | Error | cannot find symbol |
-| 7 | 0 | Error | cannot find symbol |
-| 10 | 0 | Error | cannot find symbol |
-| 10 | 0 | Error | cannot find symbol |
 | 10 | 0 | Error | cannot find symbol |
 
 ## Raw Output

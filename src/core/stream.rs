@@ -316,6 +316,19 @@ mod tests {
     }
 
     #[test]
+    fn test_post_process_line_filter_preserves_indentation() {
+        // Regression: TUI stripping must not remove leading whitespace from
+        // regular output lines, otherwise the CMake block collector loses
+        // continuation lines (message becomes just the command name).
+        let processor = OutputPostProcessor::new().with_strip_tui_frames(true);
+        let mut filter = PostProcessLineFilter::new(processor);
+        let result = filter.feed_line("  Cannot find source file:");
+        assert_eq!(result, Some("  Cannot find source file:".to_string()));
+        let result = filter.feed_line("    src/main.cpp");
+        assert_eq!(result, Some("    src/main.cpp".to_string()));
+    }
+
+    #[test]
     fn test_post_process_line_filter_keep_only() {
         let processor =
             OutputPostProcessor::new().with_keep_patterns(vec!["error|warning".to_string()]);

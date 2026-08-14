@@ -51,10 +51,49 @@ impl NpmParser {
 
     /// Find the file path corresponding to the current line
     /// Prioritizes the nearest file path line, and looks up if there is none.
-    fn find_eslint_file_path(&self, lines: &[String], current_index: usize) -> String {
+    /// `current_package` restricts the search to file-path lines belonging to
+    /// the same package: turbo runs package tasks in parallel, so lines from
+    /// different packages can interleave in the output and a naive backwards
+    /// scan would attribute issues to another package's file.
+    ///
+    /// Unprefixed path lines are the interleaving hazard: they are ambiguous
+    /// and sit inside whichever package's output run produced them (e.g. a
+    /// path split off by `merge_and_clean_lines`, or a line whose turbo prefix
+    /// was lost while streaming). Once the backwards scan crosses a line
+    /// carrying a *different* package prefix, every unprefixed path line
+    /// further back belongs to that other package's run and must be skipped.
+    fn find_eslint_file_path(
+        &self,
+        lines: &[(Option<String>, String)],
+        current_index: usize,
+        current_package: Option<&str>,
+    ) -> String {
+        // Whether unprefixed path lines are still trusted. Starts true and is
+        // cleared when the scan crosses into another package's output run.
+        let mut trust_unprefixed = true;
+
         // First look up the file path line
         for i in (0..current_index).rev() {
-            let line = &lines[i];
+            let (pkg, line) = &lines[i];
+
+            if let Some(cur) = current_package {
+                match pkg {
+                    // Line from another package: we have crossed into that
+                    // package's output run; unprefixed lines behind it belong
+                    // there as well.
+                    Some(p) if p != cur => {
+                        trust_unprefixed = false;
+                        continue;
+                    }
+                    // Same package prefix: back inside the current package's
+                    // output run.
+                    Some(_) => trust_unprefixed = true,
+                    // Unprefixed line from a foreign package's run.
+                    None if !trust_unprefixed => continue,
+                    None => {}
+                }
+            }
+
             if self.is_file_path_line(line) {
                 return line.trim().to_string();
             }
@@ -62,12 +101,17 @@ impl NpmParser {
         String::from("unknown")
     }
 
-    fn parse_eslint_format(&self, lines: &[String], start_index: usize) -> (Option<Issue>, usize) {
+    fn parse_eslint_format(
+        &self,
+        lines: &[(Option<String>, String)],
+        start_index: usize,
+        current_package: Option<&str>,
+    ) -> (Option<Issue>, usize) {
         if start_index >= lines.len() {
             return (None, start_index);
         }
 
-        let line = &lines[start_index];
+        let line = &lines[start_index].1;
         let trimmed = line.trim();
 
         // ESLint 格式: " 3:7 warning message rule-name"
@@ -122,7 +166,7 @@ impl NpmParser {
         };
 
         // Using Improved File Path Finding
-        let file_path = self.find_eslint_file_path(lines, start_index);
+        let file_path = self.find_eslint_file_path(lines, start_index, current_package);
 
         let location = if let Some(col) = col_num {
             Location::new(file_path)
@@ -420,7 +464,25 @@ impl NpmParser {
     fn parse_generic_error(&self, line: &str) -> Option<Issue> {
         let trimmed = line.trim();
 
+        // Skip Turborepo task-failure summary lines, e.g.:
+        //   "ERROR  command (/path/to/pkg) /usr/local/bin/pnpm run lint exited (1)"
+        // These are task-level meta-information (package + exit code) produced
+        // after turbo's prefix is stripped; they carry no file/line/rule and
+        // would otherwise inflate the report with one bogus issue per failed
+        // package. Real failures are still surfaced either by the parsed
+        // issues or by the command_failed fallback in run_analyzer.
         if trimmed.to_uppercase().starts_with("ERROR") {
+            // Turbo uses two spaces between "ERROR" and "command"; normalize
+            // whitespace so both "ERROR  command" and "ERROR command" match.
+            let upper: String = trimmed
+                .to_uppercase()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if upper.starts_with("ERROR COMMAND ") && upper.contains(" EXITED (") {
+                return None;
+            }
+
             let message = if let Some(space) = trimmed.find(|c: char| c.is_whitespace()) {
                 trimmed[space..].trim().to_string()
             } else {
@@ -835,7 +897,11 @@ impl OutputParser for NpmParser {
             }
 
             // Parsing the ESLint Format
-            let (issue_opt, new_index) = self.parse_eslint_format(&plain_lines, i);
+            let (issue_opt, new_index) = self.parse_eslint_format(
+                &lines_with_packages,
+                i,
+                current_package.as_deref(),
+            );
             if let Some(mut issue) = issue_opt {
                 // Add package information
                 if let Some(ref pkg) = current_package {
@@ -1380,11 +1446,11 @@ mod tests {
     fn test_parse_eslint_format() {
         let parser = NpmParser::new();
         let lines = vec![
-            "/path/to/file.js".to_string(),
-            "  10:5  error  Message  rule-name".to_string(),
+            (None, "/path/to/file.js".to_string()),
+            (None, "  10:5  error  Message  rule-name".to_string()),
         ];
 
-        let (issue, next_index) = parser.parse_eslint_format(&lines, 1);
+        let (issue, next_index) = parser.parse_eslint_format(&lines, 1, None);
         let issue = issue.unwrap();
 
         assert_eq!(issue.location.file_path, "/path/to/file.js");
@@ -1392,6 +1458,165 @@ mod tests {
         assert_eq!(issue.location.column_number, Some(5));
         assert_eq!(issue.message, "Message");
         assert_eq!(next_index, 2);
+    }
+
+    #[test]
+    fn test_eslint_file_path_scoped_to_current_package() {
+        let parser = NpmParser::new();
+
+        // Simulate turbo interleaving: web path line, utils path line, then
+        // web issues. The web issue must NOT pick up utils' file path.
+        let lines = vec![
+            (
+                Some("@pnpm-turbo/web".to_string()),
+                "/workspace/pnpm-turbo/packages/web/src/main.ts".to_string(),
+            ),
+            (
+                Some("@pnpm-turbo/utils".to_string()),
+                "/workspace/pnpm-turbo/packages/utils/src/index.ts".to_string(),
+            ),
+            (
+                Some("@pnpm-turbo/web".to_string()),
+                "    8:7   error  'unusedVar' is assigned a value but never used  @typescript-eslint/no-unused-vars".to_string(),
+            ),
+            (
+                Some("@pnpm-turbo/utils".to_string()),
+                "    4:9   error  'unusedSum' is assigned a value but never used  @typescript-eslint/no-unused-vars".to_string(),
+            ),
+        ];
+
+        // web issue: current_package = web, must resolve to web's file
+        let (web_issue, idx) = parser.parse_eslint_format(&lines, 2, Some("@pnpm-turbo/web"));
+        let web_issue = web_issue.expect("web issue should parse");
+        assert_eq!(idx, 3);
+        assert!(
+            web_issue
+                .location
+                .file_path
+                .contains("packages/web/src/main.ts"),
+            "web issue got file: {}",
+            web_issue.location.file_path
+        );
+
+        // utils issue: current_package = utils, must resolve to utils' file
+        let (utils_issue, _) = parser.parse_eslint_format(&lines, 3, Some("@pnpm-turbo/utils"));
+        let utils_issue = utils_issue.expect("utils issue should parse");
+        assert!(
+            utils_issue
+                .location
+                .file_path
+                .contains("packages/utils/src/index.ts"),
+            "utils issue got file: {}",
+            utils_issue.location.file_path
+        );
+    }
+
+    /// Regression test: a file-path line whose package prefix was lost (e.g.
+    /// split off by `merge_and_clean_lines`, which turns a trailing
+    /// `...rule-nameD:\path\file.ts` into a bare path line) sits inside
+    /// whichever package's output run produced it. A backwards scan must
+    /// reject such unprefixed lines once it crosses into another package's
+    /// run; otherwise an issue picks up the wrong package's file path.
+    #[test]
+    fn test_eslint_file_path_skips_unprefixed_path_from_foreign_run() {
+        let parser = NpmParser::new();
+
+        // utils' run ends with an *unprefixed* path line (prefix lost during
+        // merge-and-clean). The web issue below must not pick it up.
+        let lines = vec![
+            (
+                Some("@pnpm-turbo/web".to_string()),
+                "/workspace/pnpm-turbo/packages/web/src/main.ts".to_string(),
+            ),
+            (
+                Some("@pnpm-turbo/utils".to_string()),
+                "/workspace/pnpm-turbo/packages/utils/src/index.ts".to_string(),
+            ),
+            (
+                None,
+                "D:\\project\\packages\\utils\\src\\extra.ts".to_string(),
+            ),
+            (
+                Some("@pnpm-turbo/utils".to_string()),
+                "    4:9   error  'unusedSum' is assigned a value but never used  @typescript-eslint/no-unused-vars".to_string(),
+            ),
+            (
+                Some("@pnpm-turbo/web".to_string()),
+                "    8:7   error  'unusedVar' is assigned a value but never used  @typescript-eslint/no-unused-vars".to_string(),
+            ),
+        ];
+
+        // The utils issue resolves to the nearest path inside utils' run —
+        // the unprefixed extra.ts belongs to that run.
+        let (utils_issue, _) = parser.parse_eslint_format(&lines, 3, Some("@pnpm-turbo/utils"));
+        let utils_issue = utils_issue.expect("utils issue should parse");
+        assert!(
+            utils_issue
+                .location
+                .file_path
+                .contains("packages\\utils\\src\\extra.ts"),
+            "utils issue should pick up its own run's path, got: {}",
+            utils_issue.location.file_path
+        );
+
+        // The web issue must skip the unprefixed line that belongs to utils'
+        // run and resolve to web's own path.
+        let (web_issue, _) = parser.parse_eslint_format(&lines, 4, Some("@pnpm-turbo/web"));
+        let web_issue = web_issue.expect("web issue should parse");
+        assert!(
+            web_issue
+                .location
+                .file_path
+                .contains("packages/web/src/main.ts"),
+            "web issue must not pick up utils' unprefixed path, got: {}",
+            web_issue.location.file_path
+        );
+    }
+
+    #[test]
+    fn test_parse_interleaved_turbo_output() {
+        let parser = NpmParser::new();
+
+        // Full end-to-end parse of interleaved turbo output: each package's
+        // issues must keep both their package and their own file path.
+        let output = r#"@pnpm-turbo/web:lint: $ eslint src --ext .ts
+@pnpm-turbo/utils:lint: $ eslint src --ext .ts
+@pnpm-turbo/web:lint: /workspace/test-projects/pnpm-turbo/packages/web/src/main.ts
+@pnpm-turbo/utils:lint: /workspace/test-projects/pnpm-turbo/packages/utils/src/index.ts
+@pnpm-turbo/web:lint:    8:7   error  'unusedVar' is assigned a value but never used  @typescript-eslint/no-unused-vars
+@pnpm-turbo/utils:lint:    4:9   error  'unusedSum' is assigned a value but never used  @typescript-eslint/no-unused-vars
+@pnpm-turbo/web:lint:   11:1   error  Unexpected console statement                    no-console
+@pnpm-turbo/utils:lint:   16:35  error  Unexpected any. Specify a different type        @typescript-eslint/no-explicit-any"#;
+
+        let issues = parser.parse(output).data_or_default_owned();
+        assert_eq!(issues.len(), 4, "Should parse 4 issues, got {issues:?}");
+
+        let web_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.package.as_deref() == Some("@pnpm-turbo/web"))
+            .collect();
+        let utils_issues: Vec<_> = issues
+            .iter()
+            .filter(|i| i.package.as_deref() == Some("@pnpm-turbo/utils"))
+            .collect();
+
+        assert_eq!(web_issues.len(), 2);
+        assert_eq!(utils_issues.len(), 2);
+
+        for issue in web_issues {
+            assert!(
+                issue.location.file_path.contains("packages/web/src/main.ts"),
+                "web issue file: {}",
+                issue.location.file_path
+            );
+        }
+        for issue in utils_issues {
+            assert!(
+                issue.location.file_path.contains("packages/utils/src/index.ts"),
+                "utils issue file: {}",
+                issue.location.file_path
+            );
+        }
     }
 
     #[test]
@@ -1672,5 +1897,64 @@ app:lint:    10:5  warning  Unexpected any  @typescript-eslint/no-explicit-any"#
         assert_eq!(issue.location.column_number, Some(7));
         assert!(matches!(issue.level, IssueLevel::Warning));
         assert!(issue.message.contains("unusedVar"));
+    }
+
+    #[test]
+    fn test_parse_generic_error_skips_turbo_failure_summary() {
+        let parser = NpmParser::new();
+
+        // Turbo failure summary lines (after prefix stripping) must NOT become issues
+        let summary_variants = [
+            "ERROR  command (/path/to/pkg) /usr/local/bin/pnpm run lint exited (1)",
+            "ERROR command (/path/to/pkg) pnpm run typecheck exited (2)",
+            "ERROR  command (/path) /usr/local/bin/pnpm run build exited (1)",
+        ];
+        for line in &summary_variants {
+            assert!(
+                parser.parse_generic_error(line).is_none(),
+                "turbo summary line should be skipped: {line}"
+            );
+        }
+
+        // Real generic errors still parsed
+        let real = "ERROR  Cannot find module 'eslint'";
+        let issue = parser
+            .parse_generic_error(real)
+            .expect("Real error should still be parsed");
+        assert!(matches!(issue.level, IssueLevel::Error));
+        assert!(issue.message.contains("Cannot find module 'eslint'"));
+    }
+
+    #[test]
+    fn test_parse_turbo_output_with_failure_summary() {
+        let parser = NpmParser::new();
+
+        // Full turbo CI output: real ESLint issues + failure summary lines
+        let output = r#"@pnpm-turbo/web:lint: $ eslint src --ext .ts
+@pnpm-turbo/web:lint: /workspace/test-projects/pnpm-turbo/packages/web/src/main.ts
+@pnpm-turbo/web:lint:    8:7   error  'unusedVar' is assigned a value but never used  @typescript-eslint/no-unused-vars
+@pnpm-turbo/web:lint:   11:1   error  Unexpected console statement                    no-console
+@pnpm-turbo/web:lint: [ELIFECYCLE] Command failed with exit code 1.
+@pnpm-turbo/web#lint:  ERROR  command (/workspace/test-projects/pnpm-turbo/packages/web) /usr/local/bin/pnpm run lint exited (1)
+Failed:    @pnpm-turbo/web#lint
+ ERROR  run failed: command  exited (1)"#;
+
+        let issues = parser.parse(output).data_or_default_owned();
+
+        assert_eq!(
+            issues.len(),
+            2,
+            "Only the 2 real ESLint issues should be parsed, found {}: {:?}",
+            issues.len(),
+            issues.iter().map(|i| &i.message).collect::<Vec<_>>()
+        );
+
+        assert_eq!(issues[0].location.line_number, Some(8));
+        assert_eq!(issues[1].location.line_number, Some(11));
+        assert_eq!(
+            issues[0].package.as_deref(),
+            Some("@pnpm-turbo/web"),
+            "Package context should be preserved"
+        );
     }
 }

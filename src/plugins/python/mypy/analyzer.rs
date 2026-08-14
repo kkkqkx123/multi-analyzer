@@ -47,7 +47,7 @@ impl BuildAnalyzer for MypyAnalyzer {
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
         let builder = self.create_command_builder(options);
         let result = run_analyzer(&builder, &self.parser, options)?;
-        println!("Found {} issues", result.total_issues);
+        eprintln!("Found {} issues", result.total_issues);
         Ok(result)
     }
 

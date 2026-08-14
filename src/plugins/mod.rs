@@ -34,14 +34,16 @@ pub fn create_registry() -> PluginRegistry {
     registry.register(Box::new(java::MavenAnalyzer::new()));
     registry.register(Box::new(java::GradleAnalyzer::new()));
 
-    // Registering the Go Analyzer
+    // Registering the Go Analyzers
     registry.register(Box::new(go::GoAnalyzer::new()));
+    registry.register(Box::new(go::GolangciLintAnalyzer::new()));
 
     // Registering the .NET Analyzer
     registry.register(Box::new(dotnet::DotnetAnalyzer::new()));
 
-    // Registering the Ruby Analyzer
+    // Registering the Ruby Analyzers
     registry.register(Box::new(ruby::RubyAnalyzer::new()));
+    registry.register(Box::new(ruby::RubyAnalyzer::rspec()));
 
     // Registering the C++ Analyzers
     registry.register(Box::new(cpp::CMakeAnalyzer::new()));

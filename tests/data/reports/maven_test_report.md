@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total Issues**: 5
-- **Errors**: 5
+- **Total Issues**: 1
+- **Errors**: 1
 - **Warnings**: 0
 - **Info**: 0
 - **Files with Issues**: 1
@@ -16,11 +16,7 @@
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| - | - | Error |  |
 | - | - | Error | Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.0.0-M9:test (default-test) on project maven-test-project: There are test failures. |
-| - | - | Error |  |
-| - | - | Error | Please refer to dump files (if any exist) [date].dump, [date]-jvm.dump [date].dumpstream. |
-| - | - | Error | -> [Help 1] |
 
 ## Raw Output
 

@@ -4,21 +4,11 @@
 
 ## Summary
 
-- **Total Issues**: 3
-- **Errors**: 3
+- **Total Issues**: 0
+- **Errors**: 0
 - **Warnings**: 0
 - **Info**: 0
-- **Files with Issues**: 1
-
-## Issue Details (Grouped by File)
-
-### build.gradle
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| - | - | Error | AppTest > testFailure() FAILED |
-| - | - | Error | > Task :test FAILED |
-| - | - | Error | BUILD FAILED in 3s |
+- **Files with Issues**: 0
 
 ## Raw Output
 

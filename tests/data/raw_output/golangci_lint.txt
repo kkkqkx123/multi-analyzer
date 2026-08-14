@@ -1,2 +1,2 @@
-level=warning msg="[runner] Can't run linter goanalysis_metalinter: inspect: failed to load package : could not load export data: no export data for \"github.com/stretchr/testify/assert\""
-level=error msg="Running error: can't run linter goanalysis_metalinter\ninspect: failed to load package : could not load export data: no export data for \"github.com/stretchr/testify/assert\""
+level=warning msg="[runner] Can't run linter goanalysis_metalinter: buildir: failed to load package : could not load export data: no export data for \"github.com/stretchr/testify/assert\""
+level=error msg="Running error: can't run linter goanalysis_metalinter\nbuildir: failed to load package : could not load export data: no export data for \"github.com/stretchr/testify/assert\""

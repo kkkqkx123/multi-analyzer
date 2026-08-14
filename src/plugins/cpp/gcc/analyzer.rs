@@ -57,6 +57,12 @@ impl GccAnalyzer {
             builder = builder.arg(file);
         }
 
+        // Run from the source directory when requested (paths in the
+        // subcommand / --target-files are then resolved relative to it).
+        if let Some(dir) = options.source_dir.as_deref() {
+            builder = builder.current_dir(dir);
+        }
+
         builder
     }
 }
@@ -79,7 +85,7 @@ impl BuildAnalyzer for GccAnalyzer {
     fn analyze(&self, options: &AnalyzeOptions) -> Result<AnalysisResult, AnalyzerError> {
         let builder = self.create_command_builder(options);
         let result = run_analyzer(&builder, &self.parser, options)?;
-        println!("Found {} issues", result.total_issues);
+        eprintln!("Found {} issues", result.total_issues);
         Ok(result)
     }
 

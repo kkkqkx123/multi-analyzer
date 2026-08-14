@@ -100,16 +100,43 @@ analyzer cargo "check" --format json -o report.json
 
 ## C++ Build Options
 
+The C++ tech stacks (`cmake`, `gcc`, `clang`, `msvc`, `clang-format`) accept an empty subcommand: when no subcommand is given, the command is assembled from the options below. When a subcommand is present it is passed through verbatim (e.g. `analyzer cmake "--build build"`).
+
 | Option | Description |
 | ------ | ----------- |
-| `--source-dir <DIR>` | Source directory for CMake/GCC/Clang builds |
-| `--build-dir <DIR>` | Build directory for CMake builds |
-| `--cmake-generator <GEN>` | CMake generator (e.g. "Ninja", "Unix Makefiles") |
-| `--target <NAME>` | Build target name |
-| `--target-files <FILES>` | Comma-separated target source files |
-| `-I, --include-path <DIR>` | Add include search path (repeatable) |
-| `-D, --define <MACRO>` | Add preprocessor define (repeatable) |
-| `--cpp-std <STANDARD>` | C++ standard (e.g. c++17, c++20) |
+| `--source-dir <DIR>` | Source directory. CMake: configure source dir (`-S`, switches to configure mode). GCC/Clang: working directory the compiler runs in (paths are resolved relative to it) |
+| `--build-dir <DIR>` | CMake build directory (`--build <DIR>` in build mode, `-B <DIR>` in configure mode). Default: `build` |
+| `--cmake-generator <GEN>` | CMake generator (e.g. `Ninja`, `Unix Makefiles`); implies configure mode |
+| `--target <NAME>` | CMake build target (`--target <NAME>` in build mode) |
+| `--target-files <FILES>` | Comma-separated target source files (GCC/Clang/MSVC) |
+| `-I, --include-path <DIR>` | Add include search path, repeatable (GCC/Clang/MSVC) |
+| `-D, --define <MACRO>` | Add preprocessor define, repeatable (GCC/Clang/MSVC) |
+| `--cpp-std <STANDARD>` | C++ standard, e.g. `c++17`, `c++20` (GCC/Clang/MSVC) |
+
+### CMake option-driven examples
+
+```bash
+# Build mode (default): cmake --build build
+analyzer cmake
+analyzer cmake --build-dir out
+analyzer cmake --build-dir out --target myapp
+
+# Configure mode (triggered by --source-dir or --cmake-generator):
+# cmake -S . -B build -G "Unix Makefiles"
+analyzer cmake --source-dir . --build-dir build
+analyzer cmake --source-dir . --cmake-generator Ninja
+```
+
+### GCC/Clang option-driven examples
+
+```bash
+# g++ -Wall -Wextra -Wpedantic -fsyntax-only src/main.cpp
+analyzer gcc --target-files src/main.cpp
+analyzer gcc --target-files src/main.cpp --cpp-std c++17 -I include -DDEBUG
+analyzer clang --source-dir src --target-files main.cpp
+```
+
+Note: for GCC/Clang/MSVC, `-I`, `-D`, `--cpp-std` and `--target-files` are always appended to the command, even when a subcommand is given.
 
 ## Test Analysis
 

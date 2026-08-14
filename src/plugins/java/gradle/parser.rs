@@ -6,6 +6,21 @@ use crate::core::{
     TestOutputParser, TestStatus, TestSummary,
 };
 
+use std::collections::HashSet;
+use std::sync::OnceLock;
+
+/// Shared regex for Gradle test event lines. Supports both the Gradle 8+
+/// two-part format ("com.example.MyTest > testMethod PASSED") and the legacy
+/// three-part format ("com.example.MyTest > testMethod > FAILED"), with an
+/// optional execution-time suffix like "PASSED (0.05s)".
+fn test_event_regex() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(r"^(.+?) > (.+?)(?: > )?(PASSED|FAILED|SKIPPED)(?: \((\d+(?:\.\d+)?)s\))?\s*$")
+            .expect("valid test event regex")
+    })
+}
+
 pub struct GradleParser;
 
 impl GradleParser {
@@ -13,11 +28,31 @@ impl GradleParser {
         Self
     }
 
+    /// Detect Gradle test event lines like:
+    ///   Gradle 8+:  "com.example.MyTest > testMethod PASSED" / "FAILED (0.05s)"
+    ///   Legacy:     "com.example.MyTest > testMethod > FAILED"
+    /// These are test results, not compile diagnostics, and must never be
+    /// reported as issues on build.gradle.
+    fn is_test_event_line(line: &str) -> bool {
+        let trimmed = line.trim();
+        if !trimmed.contains(" > ") {
+            return false;
+        }
+        let re = test_event_regex();
+        re.is_match(trimmed)
+    }
+
     /// Parsing Gradle Compile Error/Warning Lines
     /// Format: /path/to/File.java:10: error: message
     /// Format: /path/to/File.java:20: warning: message
     fn parse_gradle_issue_line(&self, line: &str) -> Option<Issue> {
         let trimmed = line.trim();
+
+        // Test event lines ("AppTest > testFailingCase FAILED") are test
+        // results, not compile diagnostics — do not report them as issues.
+        if Self::is_test_event_line(trimmed) {
+            return None;
+        }
 
         // Check for error/warning lines with file path
         // Format: /path/to/File.java:10: error: message
@@ -161,6 +196,21 @@ impl OutputParser for GradleParser {
             }
         }
 
+        // Gradle prints the same compile errors twice (once in the compiler
+        // output, once in the "What went wrong" section). Deduplicate exact
+        // duplicates so each real diagnostic is reported once.
+        let mut seen: HashSet<(IssueLevel, String, Option<u32>, Option<u32>, String)> =
+            HashSet::new();
+        issues.retain(|i| {
+            seen.insert((
+                i.level.clone(),
+                i.location.file_path.clone(),
+                i.location.line_number,
+                i.location.column_number,
+                i.message.clone(),
+            ))
+        });
+
         ParseResult::Full(issues)
     }
 }
@@ -180,54 +230,43 @@ impl TestOutputParser for GradleParser {
             r"PASSED:\s*(\d+),\s*FAILED:\s*(\d+),\s*SKIPPED:\s*(\d+)",
         )
         .ok();
+        let event_re = test_event_regex();
 
         while i < lines.len() {
             let line = lines[i];
 
-            // Parse test execution lines: "com.example.MyTest > testMethod PASSED"
-            // or "com.example.MyTest > testMethod FAILED"
-            // or "com.example.MyTest > testMethod SKIPPED"
-            if line.contains(" > ")
-                && (line.contains("PASSED") || line.contains("FAILED") || line.contains("SKIPPED"))
-            {
-                let parts: Vec<&str> = line.splitn(3, " > ").collect();
-                if parts.len() >= 2 {
-                    let class_name = parts[0].trim();
-                    let method_parts: Vec<&str> = parts[1].splitn(2, ' ').collect();
-                    let method_name = method_parts[0].trim();
-                    let full_name = format!("{}::{}", class_name, method_name);
+            // Parse test event lines. Real Gradle output uses the two-part
+            // format ("com.example.MyTest > testMethod PASSED"), while the
+            // legacy three-part format ("... > testMethod > FAILED") is also
+            // supported for compatibility.
+            if let Some(caps) = event_re.captures(line) {
+                let class_name = caps.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+                let method_name = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+                let status = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                let exec_time: Option<f64> = caps
+                    .get(4)
+                    .and_then(|m| m.as_str().parse().ok());
+                let full_name = format!("{}::{}", class_name, method_name);
 
-                    // Check if the last part is PASSED/FAILED/SKIPPED
-                    let last_part = parts.last().unwrap_or(&"").trim();
-                    if last_part.starts_with("PASSED") {
+                match status {
+                    "PASSED" => {
                         result.passed_tests.push(TestCase {
-                            name: full_name.clone(),
+                            name: full_name,
                             status: TestStatus::Passed,
                             location: None,
                             failure_details: None,
-                            execution_time: None,
+                            execution_time: exec_time,
                         });
                         passed += 1;
-                    } else if last_part.starts_with("FAILED") {
-                        result.failed_tests.push(TestCase {
-                            name: full_name.clone(),
-                            status: TestStatus::Failed,
-                            location: None,
-                            failure_details: None,
-                            execution_time: None,
-                        });
-                        failed += 1;
-
-                        // Collect failure details (following lines)
+                    }
+                    "FAILED" => {
+                        // Collect failure details (following lines up to the
+                        // next test event or an empty line).
                         let mut details = Vec::new();
                         let mut j = i + 1;
                         while j < lines.len() {
                             let next_line = lines[j];
-                            if next_line.contains(" > ")
-                                && (next_line.contains("PASSED")
-                                    || next_line.contains("FAILED")
-                                    || next_line.contains("SKIPPED"))
-                            {
+                            if event_re.is_match(next_line) {
                                 break;
                             }
                             if next_line.trim().is_empty() {
@@ -238,42 +277,34 @@ impl TestOutputParser for GradleParser {
                             j += 1;
                         }
 
-                        if let Some(test) =
-                            result.failed_tests.iter_mut().find(|t| t.name == full_name)
-                        {
-                            test.failure_details = Some(details.join("\n"));
-                        }
-                    } else if last_part.starts_with("SKIPPED") {
-                        result.ignored_tests.push(TestCase {
+                        result.failed_tests.push(TestCase {
                             name: full_name.clone(),
+                            status: TestStatus::Failed,
+                            location: None,
+                            failure_details: if details.is_empty() {
+                                None
+                            } else {
+                                Some(details.join("\n"))
+                            },
+                            execution_time: exec_time,
+                        });
+                        failed += 1;
+                    }
+                    _ => {
+                        // SKIPPED
+                        result.ignored_tests.push(TestCase {
+                            name: full_name,
                             status: TestStatus::Ignored(None),
                             location: None,
                             failure_details: None,
-                            execution_time: None,
+                            execution_time: exec_time,
                         });
                         skipped += 1;
                     }
-
-                    // Try to extract execution time: "PASSED (1.234s)"
-                    if let Some(time_str) = last_part
-                        .strip_prefix("PASSED (")
-                        .or_else(|| last_part.strip_prefix("FAILED ("))
-                        .or_else(|| last_part.strip_prefix("SKIPPED ("))
-                        .and_then(|s| s.strip_suffix(')'))
-                    {
-                        // Parse time from format like "1.234s"
-                        let time_val = time_str.trim_end_matches('s').parse().ok();
-                        if let Some(test) = result
-                            .failed_tests
-                            .iter_mut()
-                            .chain(result.passed_tests.iter_mut())
-                            .chain(result.ignored_tests.iter_mut())
-                            .find(|t| t.name == full_name)
-                        {
-                            test.execution_time = time_val;
-                        }
-                    }
                 }
+
+                i += 1;
+                continue;
             }
 
             // Parse summary line: "PASSED: 100, FAILED: 1, SKIPPED: 2"
@@ -439,5 +470,140 @@ BUILD FAILED in 519ms";
         assert!(parser
             .parse_gradle_issue_line("BUILD FAILED in 519ms")
             .is_none());
+    }
+
+    #[test]
+    fn test_parse_test_output_gradle8_two_part_format() {
+        // Real Gradle 8 testLogging output uses the two-part format:
+        //   "com.example.AppTest > testMethod PASSED|FAILED|SKIPPED"
+        let parser = GradleParser::new();
+        let output = "\
+AppTest > testGreet PASSED
+AppTest > testFailingCase FAILED
+    org.junit.ComparisonFailure: expected:<Hello[ World]> but was:<Hello[]>
+        at com.example.AppTest.testFailingCase(AppTest.java:21)
+AppTest > testSkipped SKIPPED
+2 tests completed, 1 failed";
+        let result = parser.parse_test_output(output);
+
+        assert_eq!(result.passed_tests.len(), 1);
+        assert_eq!(result.failed_tests.len(), 1);
+        assert_eq!(result.ignored_tests.len(), 1);
+
+        assert_eq!(result.passed_tests[0].name, "AppTest::testGreet");
+        assert_eq!(result.failed_tests[0].name, "AppTest::testFailingCase");
+        let details = result.failed_tests[0]
+            .failure_details
+            .as_ref()
+            .expect("failure details should be captured");
+        assert!(details.contains("ComparisonFailure"));
+        assert!(details.contains("AppTest.java:21"));
+
+        let summary = result.test_summary.unwrap();
+        assert_eq!(summary.total, 3);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.ignored, 1);
+    }
+
+    #[test]
+    fn test_parse_test_output_with_time_suffix() {
+        // Gradle emits execution times as "PASSED (0.05s)" when enabled.
+        let parser = GradleParser::new();
+        let output = "\
+com.example.AppTest > testFast PASSED (0.05s)
+com.example.AppTest > testSlow FAILED (1.234s)";
+        let result = parser.parse_test_output(output);
+
+        assert_eq!(result.passed_tests.len(), 1);
+        assert_eq!(result.failed_tests.len(), 1);
+        assert_eq!(result.passed_tests[0].execution_time, Some(0.05));
+        assert_eq!(result.failed_tests[0].execution_time, Some(1.234));
+        assert_eq!(result.passed_tests[0].name, "com.example.AppTest::testFast");
+        assert_eq!(result.failed_tests[0].name, "com.example.AppTest::testSlow");
+    }
+
+    #[test]
+    fn test_parse_test_output_legacy_three_part_format() {
+        // Legacy format keeps working: "Class > method > FAILED"
+        let parser = GradleParser::new();
+        let output = "\
+com.example.TestSuite > testMethod > FAILED
+    org.junit.ComparisonFailure: expected:<X> but was:<Y>
+com.example.TestSuite > testOtherMethod > PASSED
+PASSED: 1, FAILED: 1, SKIPPED: 0";
+        let result = parser.parse_test_output(output);
+
+        assert_eq!(result.failed_tests.len(), 1);
+        assert_eq!(result.failed_tests[0].name, "com.example.TestSuite::testMethod");
+        assert_eq!(result.passed_tests.len(), 1);
+        assert_eq!(result.passed_tests[0].name, "com.example.TestSuite::testOtherMethod");
+
+        let summary = result.test_summary.unwrap();
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 1);
+    }
+
+    #[test]
+    fn test_test_event_lines_not_reported_as_compile_issues() {
+        // Test event lines ("AppTest > testFailingCase FAILED") must never be
+        // reported as compile issues on build.gradle.
+        let parser = GradleParser::new();
+        let output = "\
+AppTest > testGreet PASSED
+AppTest > testFailingCase FAILED
+    org.junit.ComparisonFailure: expected:<Hello[ World]> but was:<Hello[]>
+2 tests completed, 1 failed
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.";
+        let issues = parser.parse(output).data_or_default_owned();
+        assert!(
+            issues.is_empty(),
+            "test event lines must not be compile issues, got: {:?}",
+            issues
+        );
+    }
+
+    #[test]
+    fn test_deduplicates_duplicate_compile_errors() {
+        // Gradle prints the same compile errors twice (compiler output and the
+        // "What went wrong" section) — only one issue per diagnostic expected.
+        let parser = GradleParser::new();
+        let output = "\
+/tmp/proj/src/main/java/com/example/App.java:9: error: cannot find symbol
+        System.out.println(undefinedVar);
+                           ^
+  symbol:   variable undefinedVar
+  location: class App
+/tmp/proj/src/main/java/com/example/App.java:12: error: cannot find symbol
+        int result = Math.add(1, 2);
+                         ^
+  symbol:   method add(int,int)
+  location: class Math
+2 errors
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler output below.
+  /tmp/proj/src/main/java/com/example/App.java:9: error: cannot find symbol
+          System.out.println(undefinedVar);
+                             ^
+    symbol:   variable undefinedVar
+    location: class App
+  /tmp/proj/src/main/java/com/example/App.java:12: error: cannot find symbol
+          int result = Math.add(1, 2);
+                           ^
+    symbol:   method add(int,int)
+    location: class Math
+  2 errors";
+        let issues = parser.parse(output).data_or_default_owned();
+        assert_eq!(issues.len(), 2, "duplicate errors must be deduplicated");
+        assert_eq!(issues[0].location.line_number, Some(9));
+        assert_eq!(issues[1].location.line_number, Some(12));
     }
 }

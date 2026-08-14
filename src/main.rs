@@ -622,17 +622,25 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
         std::process::exit(1);
     }
 
-    if command_str.is_empty() {
-        eprintln!("Error: No command specified");
-        show_help();
-        std::process::exit(1);
-    }
-
     // Parse tech stack
     let tech_stack: TechStack = tech_stack_str.parse().unwrap_or_else(|e| {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     });
+
+    // C++ analyzers have a sensible default command and can be driven purely
+    // by options (e.g. `analyzer cmake --build-dir out`, `analyzer gcc
+    // --target-files src/main.cpp`). Every other stack requires an explicit
+    // subcommand.
+    if command_str.is_empty() && !tech_stack.allows_default_command() {
+        eprintln!("Error: No command specified");
+        show_help();
+        std::process::exit(1);
+    }
+
+    // Keep the raw tech stack string (as typed, e.g. "rails"/"ruby") so
+    // plugins can reconstruct full tool commands from aliases.
+    options.raw_tech_stack = Some(tech_stack_str.clone());
 
     // Look up command aliases in config.commands
     if !config.commands.is_empty() {
@@ -658,7 +666,9 @@ fn parse_arguments(args: &[String], config: &config::AppConfig) -> (TechStack, A
         command_str = resolved;
     }
 
-    options.subcommand = Some(SubCommand::new(command_str));
+    if !command_str.is_empty() {
+        options.subcommand = Some(SubCommand::new(command_str));
+    }
     (tech_stack, options)
 }
 
@@ -679,11 +689,24 @@ fn to_report_options(
     }
 }
 
+/// Determine whether a subcommand is a test command.
+///
+/// Test detection is token-based rather than a raw substring scan: the
+/// subcommand is split on whitespace and each token is matched against
+/// test-family keywords. This keeps file paths like `fmt_test.cpp` or flags
+/// like `--test` from being mistaken for a test subcommand, while still
+/// recognizing `test`, `nextest ...`, and pytest-style `tests/` targets.
 fn is_test_subcommand(subcommand: &Option<SubCommand>) -> bool {
-    subcommand
-        .as_ref()
-        .map(|cmd| cmd.as_str().to_lowercase().contains("test"))
-        .unwrap_or(false)
+    subcommand.as_ref().is_some_and(|cmd| {
+        cmd.as_str()
+            .split_whitespace()
+            .any(|token| {
+                let lower = token.to_lowercase();
+                lower == "test"
+                    || lower.starts_with("test")
+                    || lower.contains("nextest")
+            })
+    })
 }
 
 fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
@@ -923,8 +946,8 @@ fn show_help() {
     println!("  analyzer cargo check --package foo --features \"feat1 feat2\"");
     println!();
     println!("C++ Build Options:");
-    println!("  --source-dir <DIR>      Source directory for CMake/GCC/Clang builds");
-    println!("  --build-dir <DIR>       Build directory for CMake builds");
+    println!("  --source-dir <DIR>      CMake configure source dir; GCC/Clang working dir");
+    println!("  --build-dir <DIR>       CMake build directory (default: build)");
     println!("  --cmake-generator <GEN> CMake generator (e.g. \"Ninja\", \"Unix Makefiles\")");
     println!("  --target <NAME>         Build target name");
     println!("  --target-files <FILES>  Comma-separated target source files");
@@ -1099,6 +1122,29 @@ mod tests {
     #[test]
     fn test_is_test_subcommand_test_with_args() {
         assert!(is_test_subcommand(&Some(SubCommand::new("test --features ci"))));
+    }
+
+    #[test]
+    fn test_is_test_subcommand_nextest() {
+        assert!(is_test_subcommand(&Some(SubCommand::new("nextest run"))));
+    }
+
+    #[test]
+    fn test_is_test_subcommand_pytest_target() {
+        // pytest subcommand passes test targets as arguments
+        assert!(is_test_subcommand(&Some(SubCommand::new("-v -x tests/"))));
+    }
+
+    #[test]
+    fn test_is_test_subcommand_compiler_flag_with_test_in_path() {
+        // A "test" substring inside a file path must NOT trigger test analysis
+        // (regression: clang-format --dry-run --Werror /tmp/fmt_test.cpp)
+        assert!(!is_test_subcommand(&Some(SubCommand::new(
+            "--dry-run --Werror /tmp/fmt_test.cpp"
+        ))));
+        assert!(!is_test_subcommand(&Some(SubCommand::new(
+            "-fsyntax-only src/fmt_test.cpp"
+        ))));
     }
 
     #[test]

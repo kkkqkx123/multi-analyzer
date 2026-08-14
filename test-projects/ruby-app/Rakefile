@@ -1,0 +1,13 @@
+# Rake tasks for the sample project
+
+task :default => :check
+
+desc 'Run RuboCop'
+task :check do
+  sh 'rubocop'
+end
+
+desc 'Run tests'
+task :test do
+  sh 'rspec'
+end

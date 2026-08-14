@@ -439,8 +439,8 @@ fn test_cmake_build() {
 
 #[test]
 fn test_cmake_configure() {
-    let r = assert_classified_as("cmake --configure -G Ninja", "cmake");
-    assert_subcommand(&r, "--configure");
+    let r = assert_classified_as("cmake -S . -B build", "cmake");
+    assert_subcommand(&r, "-S");
 }
 
 // ============================================================================
@@ -450,14 +450,20 @@ fn test_cmake_configure() {
 #[test]
 fn test_gcc_compile() {
     let r = assert_classified_as("gcc -c src/main.c -o main.o", "gcc");
-    assert_subcommand(&r, "compile");
+    assert_subcommand(&r, "-fsyntax-only");
+}
+
+#[test]
+fn test_gcc_syntax_only() {
+    let r = assert_classified_as("gcc -fsyntax-only src/main.c", "gcc");
+    assert_subcommand(&r, "-fsyntax-only");
 }
 
 #[test]
 fn test_gpp_compile() {
     // g++ is matched by the Gcc rule (pattern groups gcc and g++ together)
     let r = assert_classified_as("g++ -c src/main.cpp -std=c++17 -o main.o", "gcc");
-    assert_subcommand(&r, "compile");
+    assert_subcommand(&r, "-fsyntax-only");
 }
 
 // ============================================================================
@@ -467,13 +473,13 @@ fn test_gpp_compile() {
 #[test]
 fn test_clang_compile() {
     let r = assert_classified_as("clang -c src/main.c -o main.o", "clang");
-    assert_subcommand(&r, "compile");
+    assert_subcommand(&r, "-fsyntax-only");
 }
 
 #[test]
 fn test_clangpp_compile() {
     let r = assert_classified_as("clang++ -c src/main.cpp -o main.o", "clang");
-    assert_subcommand(&r, "compile");
+    assert_subcommand(&r, "-fsyntax-only");
 }
 
 // ============================================================================
@@ -483,13 +489,38 @@ fn test_clangpp_compile() {
 #[test]
 fn test_cl_exe() {
     let r = assert_classified_as("cl.exe /c src/main.cpp", "msvc");
-    assert_subcommand(&r, "compile");
+    assert_subcommand(&r, "/Zs");
 }
 
 #[test]
 fn test_msvc() {
     let r = assert_classified_as("msvc /c src/main.cpp", "msvc");
-    assert_subcommand(&r, "compile");
+    assert_subcommand(&r, "/Zs");
+}
+
+// ============================================================================
+// C++ / ClangFormat
+// ============================================================================
+
+#[test]
+fn test_clang_format_dry_run() {
+    // Regression: the raw flags must be passed through verbatim (no "format"
+    // literal, no duplicated --dry-run/--Werror which clang-format rejects).
+    let r = assert_classified_as("clang-format --dry-run --Werror src/main.cpp", "clang-format");
+    assert_subcommand(&r, "--dry-run --Werror src/main.cpp");
+}
+
+#[test]
+fn test_clang_format_werror() {
+    let r = assert_classified_as("clang-format --Werror src/utils.cpp", "clang-format");
+    assert_subcommand(&r, "--Werror src/utils.cpp");
+}
+
+#[test]
+fn test_cmake_configure_rejected() {
+    // `cmake --configure` is not a valid CMake invocation (CMake errors with
+    // "Unknown argument --configure"); only real modes are recognized.
+    assert_unmatched("cmake --configure -B build -S .");
 }
 
 // ============================================================================

@@ -222,37 +222,40 @@ pub const RUBY_RULES: &[CommandRule] = &[
 /// C++ ecosystem rules
 pub const CPP_RULES: &[CommandRule] = &[
     CommandRule {
-        pattern: r"^cmake\s+(--build|--configure)",
+        pattern: r"^cmake\s+(--build\b|-S\b)",
         tech_stack: TechStack::CMake,
         subcommand_template: "{1}",
         prefixes: &["cmake"],
         category: "C++",
     },
     CommandRule {
-        pattern: r"^(gcc|g\+\+)\s+.*-c\b",
+        pattern: r"^(gcc|g\+\+)\s+.*(-c\b|-fsyntax-only\b)",
         tech_stack: TechStack::Gcc,
-        subcommand_template: "compile",
+        subcommand_template: "-fsyntax-only",
         prefixes: &["gcc", "g++"],
         category: "C++",
     },
     CommandRule {
         pattern: r"^(clang|clang\+\+)\s+.*(-c\b|-fsyntax-only\b)",
         tech_stack: TechStack::Clang,
-        subcommand_template: "compile",
+        subcommand_template: "-fsyntax-only",
         prefixes: &["clang", "clang++"],
         category: "C++",
     },
     CommandRule {
-        pattern: r"^clang-format\b",
+        // Pass the original flags through verbatim: clang-format rejects
+        // duplicated flags (e.g. two `--dry-run`), so canonicalizing them
+        // would break the common `clang-format --dry-run [--Werror]` checks.
+        pattern: r"^clang-format\b\s*(.*)$",
         tech_stack: TechStack::ClangFormat,
-        subcommand_template: "format",
+        subcommand_template: "{1}",
         prefixes: &["clang-format"],
         category: "C++",
     },
     CommandRule {
         pattern: r"^(cl\.exe|msvc)\s+",
         tech_stack: TechStack::Msvc,
-        subcommand_template: "compile",
+        subcommand_template: "/Zs",
         prefixes: &["cl", "msvc"],
         category: "C++",
     },
@@ -410,37 +413,40 @@ pub const RULES: &[CommandRule] = &[
     },
     // ============ C++ ============
     CommandRule {
-        pattern: r"^cmake\s+(--build|--configure)",
+        pattern: r"^cmake\s+(--build\b|-S\b)",
         tech_stack: TechStack::CMake,
         subcommand_template: "{1}",
         prefixes: &["cmake"],
         category: "C++",
     },
     CommandRule {
-        pattern: r"^(gcc|g\+\+)\s+.*-c\b",
+        pattern: r"^(gcc|g\+\+)\s+.*(-c\b|-fsyntax-only\b)",
         tech_stack: TechStack::Gcc,
-        subcommand_template: "compile",
+        subcommand_template: "-fsyntax-only",
         prefixes: &["gcc", "g++"],
         category: "C++",
     },
     CommandRule {
         pattern: r"^(clang|clang\+\+)\s+.*(-c\b|-fsyntax-only\b)",
         tech_stack: TechStack::Clang,
-        subcommand_template: "compile",
+        subcommand_template: "-fsyntax-only",
         prefixes: &["clang", "clang++"],
         category: "C++",
     },
     CommandRule {
-        pattern: r"^clang-format\b",
+        // Pass the original flags through verbatim: clang-format rejects
+        // duplicated flags (e.g. two `--dry-run`), so canonicalizing them
+        // would break the common `clang-format --dry-run [--Werror]` checks.
+        pattern: r"^clang-format\b\s*(.*)$",
         tech_stack: TechStack::ClangFormat,
-        subcommand_template: "format",
+        subcommand_template: "{1}",
         prefixes: &["clang-format"],
         category: "C++",
     },
     CommandRule {
         pattern: r"^(cl\.exe|msvc)\s+",
         tech_stack: TechStack::Msvc,
-        subcommand_template: "compile",
+        subcommand_template: "/Zs",
         prefixes: &["cl", "msvc"],
         category: "C++",
     },

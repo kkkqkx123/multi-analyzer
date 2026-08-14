@@ -1,3 +1,5 @@
-npm notice run sample-turbo-project@1.0.0 lint
-npm notice run turbo run lint
-sh: line 1: turbo: command not found
+
+> sample-turbo-project@1.0.0 lint
+> turbo run lint
+
+sh: 1: turbo: not found

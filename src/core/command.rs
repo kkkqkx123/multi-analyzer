@@ -147,6 +147,7 @@ pub fn resolve_command(cmd: &str) -> Option<PathBuf> {
 
 /// command builder
 /// Used to build and execute external commands
+#[derive(Clone)]
 pub struct CommandBuilder {
     program: String,
     args: Vec<String>,
@@ -204,6 +205,12 @@ impl CommandBuilder {
     /// Suppress command execution logging
     pub fn quiet(mut self) -> Self {
         self.options.verbose = false;
+        self
+    }
+
+    /// Set command execution logging verbosity
+    pub fn with_verbose(mut self, verbose: bool) -> Self {
+        self.options.verbose = verbose;
         self
     }
 
@@ -265,7 +272,9 @@ impl CommandBuilder {
             .unwrap_or_else(|| self.program.clone());
 
         if self.options.verbose {
-            println!("Running: {} {}", program, self.args.join(" "));
+            // Progress echo goes to stderr so machine-readable output
+            // (e.g. --format json) on stdout stays clean.
+            eprintln!("Running: {} {}", program, self.args.join(" "));
         }
 
         let (tx, rx) = mpsc::channel();
@@ -351,7 +360,8 @@ impl CommandBuilder {
                 cmd.stderr(Stdio::piped());
 
                 if self.options.verbose {
-                    println!("Running: {} {}", self.program, self.args.join(" "));
+                    // Progress echo goes to stderr (see execute_with_status).
+                    eprintln!("Running: {} {}", self.program, self.args.join(" "));
                 }
 
                 let mut child = cmd.spawn().map_err(|e| {

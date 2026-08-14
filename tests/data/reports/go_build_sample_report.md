@@ -12,6 +12,15 @@
 
 ## Issue Details (Grouped by File)
 
+### ./main.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 15 | 2 | Error | undefined: unusedVar |
+| 18 | 14 | Error | cannot use "hello" (type string) as type int in argument to fmt.Printf |
+| 21 | 10 | Error | os.Setenv call has possible formatting directive %s |
+| 23 | 2 | Error | cfg declared but not used |
+
 ### pkg/utils/math.go
 
 | Line | Column | Level | Message |
@@ -23,15 +32,6 @@
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 15 | 15 | Error | os.Setenv call has possible formatting directive %v |
-
-### ./main.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 15 | 2 | Error | undefined: unusedVar |
-| 18 | 14 | Error | cannot use "hello" (type string) as type int in argument to fmt.Printf |
-| 21 | 10 | Error | os.Setenv call has possible formatting directive %s |
-| 23 | 2 | Error | cfg declared but not used |
 
 ## Raw Output
 

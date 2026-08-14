@@ -1,7 +1,15 @@
 //! HTML Report Generator
 
 use super::{Reporter, ReporterError, ReportOptions};
-use crate::core::types::{AnalysisResult, IssueLevel};
+use crate::core::types::{AnalysisResult, IssueLevel, TestAnalysisResult};
+
+/// Escape HTML-sensitive characters so issue/test content cannot break markup.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
 
 /// HTML Report Generator
 pub struct HtmlReporter;
@@ -12,7 +20,25 @@ impl HtmlReporter {
     }
 
     /// Detects the report type and returns the appropriate title
-    fn detect_report_type(&self, result: &AnalysisResult) -> (String, String) {
+    fn detect_report_type(
+        &self,
+        result: &AnalysisResult,
+        tech_stack: Option<&str>,
+    ) -> (String, String) {
+        // Tech-stack driven titles take priority over message heuristics
+        if let Some(ts) = tech_stack {
+            let lower = ts.to_lowercase();
+            if lower.contains("rubocop") || lower.contains("ruby") || lower.contains("rails") {
+                return (
+                    "RuboCop Report".to_string(),
+                    "RuboCop Issues Summary".to_string(),
+                );
+            }
+            if lower.contains("rspec") {
+                return ("RSpec Report".to_string(), "Test Issues Summary".to_string());
+            }
+        }
+
         // Collect all issue messages for type determination
         let all_messages: Vec<String> = result
             .issues_by_file
@@ -96,7 +122,7 @@ impl Reporter for HtmlReporter {
         let mut html = String::new();
 
         // Type of test report
-        let (title, summary_title) = self.detect_report_type(result);
+        let (title, summary_title) = self.detect_report_type(result, options.tech_stack.as_deref());
 
         html.push_str("<!DOCTYPE html>\n");
         html.push_str("<html>\n<head>\n");
@@ -192,14 +218,168 @@ impl Reporter for HtmlReporter {
                         level_class,
                         issue.level,
                         code_display,
-                        issue.location.file_path,
+                        html_escape(&issue.location.file_path),
                         location,
-                        issue.message
+                        html_escape(&issue.message)
                     ));
                 }
             }
 
             html.push_str("</table>\n");
+        }
+
+        html.push_str("</body>\n</html>");
+
+        Ok(html)
+    }
+
+    /// Generate an HTML test report that carries the full test statistics and
+    /// per-case results in addition to any compile issues. Unlike the compile
+    /// report, a run with failing tests but zero compile issues must never
+    /// short-circuit to "no issues found".
+    fn generate_test_report_with_options(
+        &self,
+        result: &TestAnalysisResult,
+        options: ReportOptions,
+    ) -> Result<String, ReporterError> {
+        let mut html = String::new();
+
+        let title = if result.all_passed() {
+            "Test Report - All Passed"
+        } else {
+            "Test Report - Issues Found"
+        };
+
+        html.push_str("<!DOCTYPE html>\n");
+        html.push_str("<html>\n<head>\n");
+        html.push_str("<meta charset=\"UTF-8\">\n");
+        html.push_str(&format!("<title>{}</title>\n", html_escape(title)));
+        html.push_str("<style>\n");
+        html.push_str("body { font-family: Arial, sans-serif; margin: 40px; }\n");
+        html.push_str("h1 { color: #333; }\n");
+        html.push_str("h2 { color: #444; margin-top: 30px; }\n");
+        html.push_str(".error { color: #d32f2f; }\n");
+        html.push_str(".warning { color: #f57c00; }\n");
+        html.push_str(".info { color: #1976d2; }\n");
+        html.push_str("table { border-collapse: collapse; width: 100%; margin: 20px 0; }\n");
+        html.push_str("th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }\n");
+        html.push_str("th { background-color: #f5f5f5; }\n");
+        html.push_str("pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }\n");
+        html.push_str("</style>\n");
+        html.push_str("</head>\n<body>\n");
+
+        html.push_str(&format!("<h1>{}</h1>\n", html_escape(title)));
+
+        // Test summary
+        if let Some(ref summary) = result.test_summary {
+            html.push_str("<h2>Summary</h2>\n");
+            html.push_str("<ul>\n");
+            html.push_str(&format!(
+                "<li><strong>Total:</strong> {} (calculated: {})</li>\n",
+                summary.total,
+                result.collected_tests()
+            ));
+            html.push_str(&format!(
+                "<li><strong>Passed:</strong> &#x2705; {}</li>\n",
+                summary.passed
+            ));
+            html.push_str(&format!(
+                "<li><strong>Failed:</strong> &#x274C; {}</li>\n",
+                summary.failed
+            ));
+            html.push_str(&format!(
+                "<li><strong>Ignored:</strong> {}</li>\n",
+                summary.ignored
+            ));
+            if summary.execution_time().is_some() {
+                html.push_str(&format!(
+                    "<li><strong>Duration:</strong> {}</li>\n",
+                    summary.execution_time_formatted()
+                ));
+            }
+            html.push_str("</ul>\n");
+        }
+
+        // Failed tests
+        if !result.failed_tests.is_empty() {
+            html.push_str(&format!(
+                "<h2>Failed Tests ({} item(s))</h2>\n",
+                result.failed_tests.len()
+            ));
+            html.push_str("<table>\n");
+            html.push_str("<tr><th>Test</th><th>Details</th></tr>\n");
+            for test in &result.failed_tests {
+                let details = test.failure_details.as_deref().unwrap_or("");
+                html.push_str(&format!(
+                    "<tr class=\"error\"><td>{}</td><td><pre>{}</pre></td></tr>\n",
+                    html_escape(&test.name),
+                    html_escape(details)
+                ));
+            }
+            html.push_str("</table>\n");
+        }
+
+        // Ignored tests
+        if !result.ignored_tests.is_empty() {
+            html.push_str(&format!(
+                "<h2>Ignored Tests ({} item(s))</h2>\n",
+                result.ignored_tests.len()
+            ));
+            html.push_str("<ul>\n");
+            for test in &result.ignored_tests {
+                let reason = match &test.status {
+                    crate::core::types::TestStatus::Ignored(Some(r)) => format!(" - {}", r),
+                    _ => String::new(),
+                };
+                html.push_str(&format!(
+                    "<li>&#x1F515; {}{}</li>\n",
+                    html_escape(&test.name),
+                    html_escape(&reason)
+                ));
+            }
+            html.push_str("</ul>\n");
+        }
+
+        // Passed tests
+        if !result.passed_tests.is_empty() {
+            html.push_str(&format!(
+                "<h2>Passed Tests ({} item(s))</h2>\n",
+                result.passed_tests.len()
+            ));
+            html.push_str("<ul>\n");
+            if result.passed_tests.len() <= 10 {
+                for test in &result.passed_tests {
+                    html.push_str(&format!(
+                        "<li>&#x2705; {}</li>\n",
+                        html_escape(&test.name)
+                    ));
+                }
+            } else {
+                html.push_str(&format!(
+                    "<li>&#x2705; {} tests passed</li>\n",
+                    result.passed_tests.len()
+                ));
+            }
+            html.push_str("</ul>\n");
+        }
+
+        // Compile issues (always rendered without short-circuit)
+        if result.compile_result.total_issues > 0 {
+            html.push_str("<h2>Compile Issues</h2>\n");
+            let compile_html = self.generate_with_options(
+                &result.compile_result,
+                ReportOptions {
+                    success_short_circuit: false,
+                    ..options.clone()
+                },
+            )?;
+            // Strip the outer <html>/<head>/<body> wrapper; keep the inner content.
+            let inner = compile_html
+                .split_once("<body>\n")
+                .map(|(_, rest)| rest.trim_end_matches("</body>\n</html>").trim_end())
+                .unwrap_or(compile_html.as_str());
+            html.push_str(inner);
+            html.push('\n');
         }
 
         html.push_str("</body>\n</html>");

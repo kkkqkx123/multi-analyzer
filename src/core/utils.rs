@@ -93,20 +93,36 @@ pub fn filter_tui_frame_lines(output: &str) -> String {
             if is_tui_border_line(trimmed) {
                 return String::new();
             }
-            // Strip leading TUI border prefix from content lines (e.g. "│ ./main.go:...")
-            let mut cleaned = line;
-            while let Some(first) = cleaned.chars().next() {
-                if TUI_BORDER_CHARS.contains(&first) || first == ' ' {
-                    cleaned = &cleaned[first.len_utf8()..];
-                } else {
-                    break;
-                }
+            // Strip leading TUI border prefix from content lines (e.g. "│ ./main.go:...");
+            // keep the original indentation when the line has no border character so
+            // indentation-sensitive parsers (e.g. CMake block errors) still work.
+            match strip_tui_prefix(line) {
+                Some(cleaned) => cleaned.to_string(),
+                None => line.to_string(),
             }
-            cleaned.to_string()
         })
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Strip a leading TUI border prefix (border characters plus following spaces)
+/// from a line. Returns `None` when the line does not start with a TUI border
+/// character, in which case the caller must keep the line as-is.
+fn strip_tui_prefix(line: &str) -> Option<&str> {
+    let first = line.chars().next()?;
+    if !TUI_BORDER_CHARS.contains(&first) {
+        return None;
+    }
+    let mut cleaned = line;
+    while let Some(c) = cleaned.chars().next() {
+        if TUI_BORDER_CHARS.contains(&c) || c == ' ' {
+            cleaned = &cleaned[c.len_utf8()..];
+        } else {
+            break;
+        }
+    }
+    Some(cleaned)
 }
 
 /// Truncate output to at most `max_lines` lines, showing "… (+N more)" if truncated.
@@ -369,15 +385,15 @@ impl OutputPostProcessor {
         if is_tui_border_line(trimmed) {
             return None;
         }
-        let mut cleaned = line.to_string();
-        while let Some(first) = cleaned.chars().next() {
-            if TUI_BORDER_CHARS.contains(&first) || first == ' ' {
-                cleaned = cleaned[first.len_utf8()..].to_string();
-            } else {
-                break;
-            }
-        }
-        if cleaned.is_empty() {
+        // Only strip leading whitespace when the line actually starts with a
+        // TUI border character; regular output lines keep their indentation so
+        // that indentation-sensitive parsers (e.g. CMake block errors) still
+        // work.
+        let cleaned = match strip_tui_prefix(line) {
+            Some(c) => c.to_string(),
+            None => line.to_string(),
+        };
+        if cleaned.trim().is_empty() {
             None
         } else {
             Some(cleaned)
@@ -617,6 +633,16 @@ mod tests {
         let output = "\u{2502} ./main.go:10:5: error: unused variable";
         let result = filter_tui_frame_lines(output);
         assert_eq!(result, "./main.go:10:5: error: unused variable");
+    }
+
+    #[test]
+    fn test_filter_tui_frame_lines_preserves_indentation() {
+        // Regular output lines (no TUI border char) must keep their leading
+        // whitespace; indentation-sensitive parsers (e.g. CMake block errors)
+        // depend on it.
+        let output = "  Cannot find source file:\n    src/main.cpp";
+        let result = filter_tui_frame_lines(output);
+        assert_eq!(result, "  Cannot find source file:\n    src/main.cpp");
     }
 
     #[test]

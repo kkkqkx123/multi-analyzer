@@ -143,6 +143,53 @@ src/utils.cpp:25:12: warning: unused variable 'tmp' [-Wunused-variable]
 }
 
 #[test]
+fn test_cmake_consecutive_error_blocks() {
+    // Two "CMake Error at" blocks back to back (the terminating line of the
+    // first block is also the start of the second). Both must be captured.
+    let output = r#"
+CMake Error at CMakeLists.txt:3 (add_executable):
+  Cannot find source file:
+
+    src/missing.cpp
+
+CMake Error at CMakeLists.txt:3 (add_executable):
+  No SOURCES given to target: app
+
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+"#;
+
+    let parser = CMakeParser::new();
+    let issues = OutputParser::parse(&parser, output).data_or_default_owned();
+
+    let cmake_errors: Vec<_> = issues
+        .iter()
+        .filter(|i| i.code.as_ref().is_some_and(|c| c.contains("CMake Error")))
+        .collect();
+    assert_eq!(
+        cmake_errors.len(),
+        2,
+        "Should parse both consecutive CMake error blocks, got {}",
+        cmake_errors.len()
+    );
+
+    assert!(
+        cmake_errors[0].message.contains("Cannot find source file"),
+        "First block should carry continuation lines, got: '{}'",
+        cmake_errors[0].message
+    );
+    assert!(
+        cmake_errors[1].message.contains("No SOURCES given"),
+        "Second block should carry continuation lines, got: '{}'",
+        cmake_errors[1].message
+    );
+
+    println!(
+        "✓ Consecutive CMake error blocks parsed correctly ({} blocks)",
+        cmake_errors.len()
+    );
+}
+
+#[test]
 fn test_empty_output() {
     let parser = CMakeParser::new();
     let issues = OutputParser::parse(&parser, "").data_or_default_owned();

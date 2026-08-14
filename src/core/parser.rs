@@ -397,6 +397,12 @@ pub trait BlockCollector: Send + Sync {
                 issues.extend(self.extract_issues(&block));
                 in_block = false;
                 block.clear();
+                // The terminating line may itself start a new block (e.g.
+                // consecutive "CMake Error at ..." lines); do not skip it.
+                if self.is_block_start(line) {
+                    in_block = true;
+                    block.push(line.clone());
+                }
             } else {
                 block.push(line.clone());
             }

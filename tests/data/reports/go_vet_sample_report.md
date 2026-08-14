@@ -12,13 +12,6 @@
 
 ## Issue Details (Grouped by File)
 
-### ./cmd/myapp/main.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 18 | 14 | Warning | Printf format %d has arg "hello" of wrong type string |
-| 21 | 10 | Warning | return value of os.Setenv is not checked |
-
 ### pkg/utils/math.go
 
 | Line | Column | Level | Message |
@@ -30,6 +23,13 @@
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 15 | 15 | Warning | return value of os.Setenv is not checked |
+
+### ./cmd/myapp/main.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 18 | 14 | Warning | Printf format %d has arg "hello" of wrong type string |
+| 21 | 10 | Warning | return value of os.Setenv is not checked |
 
 ## Raw Output
 

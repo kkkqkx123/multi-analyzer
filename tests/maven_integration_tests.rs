@@ -248,3 +248,33 @@ fn test_maven_parser_specific_patterns() {
         }
     }
 }
+
+#[test]
+fn test_maven_sample_deduplicates_duplicate_errors() {
+    use analyzer::core::OutputParser;
+    use analyzer::plugins::java::maven::parser::MavenParser;
+
+    // The maven_compile_sample prints each compile error twice (once in the
+    // "COMPILATION ERROR" block, once in the error list after "Failed to
+    // execute goal"). The parser must deduplicate them.
+    let parser = MavenParser::new();
+    let output = read_sample("maven_compile_sample");
+    let issues = parser.parse(&output).data_or_default_owned();
+
+    let broken_errors: Vec<_> = issues
+        .iter()
+        .filter(|i| {
+            i.location.file_path.contains("Broken.java")
+                && i.level == analyzer::core::IssueLevel::Error
+        })
+        .collect();
+    assert_eq!(
+        broken_errors.len(),
+        3,
+        "Broken.java has 3 unique compile errors, got: {:?}",
+        broken_errors
+            .iter()
+            .map(|i| format!("{:?}", i.location.line_number))
+            .collect::<Vec<_>>()
+    );
+}

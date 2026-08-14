@@ -13,7 +13,25 @@ impl MarkdownReporter {
     }
 
     /// Detects the report type and returns the appropriate title
-    fn detect_report_type(&self, result: &AnalysisResult) -> (String, String) {
+    fn detect_report_type(
+        &self,
+        result: &AnalysisResult,
+        tech_stack: Option<&str>,
+    ) -> (String, String) {
+        // Tech-stack driven titles take priority over message heuristics
+        if let Some(ts) = tech_stack {
+            let lower = ts.to_lowercase();
+            if lower.contains("rubocop") || lower.contains("ruby") || lower.contains("rails") {
+                return (
+                    "RuboCop Report".to_string(),
+                    "RuboCop Issues Summary".to_string(),
+                );
+            }
+            if lower.contains("rspec") {
+                return ("RSpec Report".to_string(), "Test Issues Summary".to_string());
+            }
+        }
+
         // Collect all issue messages for type determination
         let all_messages: Vec<String> = result
             .issues_by_file
@@ -94,7 +112,7 @@ impl MarkdownReporter {
         let mut report = String::new();
 
         // Detect the report type and set the appropriate title
-        let (title, summary_title) = self.detect_report_type(result);
+        let (title, summary_title) = self.detect_report_type(result, options.tech_stack.as_deref());
         report.push_str(&format!("# {}\n\n", title));
 
         // summaries
@@ -392,7 +410,6 @@ impl MarkdownReporter {
 
         // Selection of titles based on test results
         let all_passed = result.all_passed();
-        let total_tests = result.total_tests();
         if all_passed {
             report.push_str("# ✅ Test Report - All Passed\n\n");
         } else {
@@ -410,9 +427,13 @@ impl MarkdownReporter {
                 0.0
             };
 
+            // "calculated" reports how many per-case detail entries the parser
+            // collected; the runner-declared total stays authoritative and may
+            // be higher when details are aggregated at class granularity.
+            let collected = result.collected_tests();
             report.push_str(&format!(
                 "- **Total**: {} test(s) (calculated: {})\n",
-                summary.total, total_tests
+                summary.total, collected
             ));
             report.push_str(&format!(
                 "- **Passed**: ✅ {} ({:.1}%)\n",
@@ -574,28 +595,28 @@ mod tests {
     #[test]
     fn test_detect_report_type_default() {
         let reporter = MarkdownReporter::new();
-        let (title, _) = reporter.detect_report_type(&single_error_result());
+        let (title, _) = reporter.detect_report_type(&single_error_result(), None);
         assert_eq!(title, "Analysis Report");
     }
 
     #[test]
     fn test_detect_report_type_security() {
         let reporter = MarkdownReporter::new();
-        let (title, _) = reporter.detect_report_type(&security_audit_result());
+        let (title, _) = reporter.detect_report_type(&security_audit_result(), None);
         assert_eq!(title, "Security Audit Report");
     }
 
     #[test]
     fn test_detect_report_type_check() {
         let reporter = MarkdownReporter::new();
-        let (title, _) = reporter.detect_report_type(&type_check_result());
+        let (title, _) = reporter.detect_report_type(&type_check_result(), None);
         assert_eq!(title, "Type Check Report");
     }
 
     #[test]
     fn test_detect_report_type_lint() {
         let reporter = MarkdownReporter::new();
-        let (title, _) = reporter.detect_report_type(&lint_result());
+        let (title, _) = reporter.detect_report_type(&lint_result(), None);
         assert_eq!(title, "Lint Report");
     }
 

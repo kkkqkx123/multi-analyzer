@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# cl shim: translates MSVC-style flags to clang and emits MSVC-style diagnostics
+# so the analyzer's msvc plugin can run on Linux. Not a real MSVC toolchain.
+
+args=("$@")
+clang_args=()
+lang="c++"
+syntax_only=false
+is_exe=false
+
+for a in "${args[@]}"; do
+  case "$a" in
+    /Zs) syntax_only=true ;;
+    /c|/nologo|/EHsc) ;;
+    /W4|/W3|/W2|/W1) clang_args+=("-Wall") ;;
+    /std:c++) clang_args+=("-std=c++17") ;;
+    /std:c++*) clang_args+=("-std=${a#/std:c++}") ;;
+    /std:c*) clang_args+=("-std=c${a#/std:c}") ;;
+    /I) shift ;;
+    /I*) clang_args+=("-I${a#/I}") ;;
+    /D*) clang_args+=("-D${a#/D}") ;;
+    /Fe*|/Fo*|/link) ;;
+    *.cpp|*.cc|*.cxx) clang_args+=("$a"); lang="c++" ;;
+    *.c) clang_args+=("$a"); lang="c" ;;
+    *) clang_args+=("$a") ;;
+  esac
+done
+
+if $syntax_only; then
+  clang_args+=("-fsyntax-only")
+fi
+
+if [[ "$lang" == "c" ]]; then
+  compiler="clang"
+else
+  compiler="clang++"
+fi
+
+"$compiler" -fdiagnostics-format=msvc "${clang_args[@]}" 2>&1 \
+  | sed -E 's/: (error|warning|note|fatal error): /: \1 C9999: /'
+exit ${PIPESTATUS[0]}

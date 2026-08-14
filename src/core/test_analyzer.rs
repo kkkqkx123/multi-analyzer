@@ -139,10 +139,15 @@ pub trait TestAnalyzer: Send + Sync {
         let output = builder
             .execute()
             .map_err(|e| TestAnalyzerError::CommandFailed(e.to_string()))?;
+        // The compile path (run_analyzer) strips ANSI escape codes via the
+        // streaming post-processor before parsing; the test path must do the
+        // same here or prefix-anchored patterns (e.g. "[ERROR]") silently miss
+        // colorized build tool output.
+        let clean = crate::core::utils::strip_ansi(&output);
         let parsed = self
             .test_parser()
             .ok_or(TestAnalyzerError::NotSupported)?
-            .parse_test_output(&output);
+            .parse_test_output(&clean);
         Ok(parsed)
     }
 
@@ -230,7 +235,8 @@ mod tests {
         assert_eq!(result.passed_tests.len(), 1);
         assert!(result.ignored_tests.is_empty());
         assert_eq!(result.test_summary.as_ref().unwrap().total, 10);
-        assert_eq!(result.total_tests(), 2);
+        assert_eq!(result.total_tests(), 10, "the runner summary is authoritative");
+        assert_eq!(result.collected_tests(), 2, "detail lists stay as collected");
         assert!(!result.all_passed());
     }
 

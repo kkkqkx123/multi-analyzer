@@ -17,6 +17,44 @@ impl RubyParser {
         }
     }
 
+    /// Extract the first top-level JSON object from mixed output.
+    ///
+    /// Command execution merges stdout and stderr, and tools like RuboCop write
+    /// trailing advisory text to stderr (e.g. "The following cops were added...").
+    /// Feeding that merged text straight to `serde_json::from_str` fails on the
+    /// trailing content, so the JSON payload must be isolated first.
+    fn extract_json_object<'a>(&self, output: &'a str) -> Option<&'a str> {
+        let start = output.find('{')?;
+        let bytes = output.as_bytes();
+        let mut depth = 0usize;
+        let mut in_string = false;
+        let mut escaped = false;
+        for (i, &b) in bytes.iter().enumerate().skip(start) {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'"' {
+                    in_string = false;
+                }
+            } else {
+                match b {
+                    b'"' => in_string = true,
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some(&output[start..=i]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
+
     /// Detect the type of Ruby output based on content heuristics
     fn detect_output_type(&self, output: &str) -> RubyOutputType {
         let trimmed = output.trim();
@@ -24,14 +62,18 @@ impl RubyParser {
             return RubyOutputType::Unknown;
         }
 
-        // RSpec JSON output starts with {"version": ...} or contains "examples" array
-        if trimmed.contains("\"version\"") && trimmed.contains("\"examples\"") {
-            return RubyOutputType::RspecJson;
-        }
+        // Prefer the isolated JSON payload when present: merged stdout+stderr
+        // may carry trailing non-JSON text that would defeat `starts_with`.
+        if let Some(json) = self.extract_json_object(output) {
+            // RSpec JSON output starts with {"version": ...} or contains "examples" array
+            if json.contains("\"version\"") && json.contains("\"examples\"") {
+                return RubyOutputType::RspecJson;
+            }
 
-        // RuboCop JSON output starts with {"metadata": ...}
-        if trimmed.starts_with('{') && trimmed.contains("\"metadata\"") {
-            return RubyOutputType::RubocopJson;
+            // RuboCop JSON output contains "metadata"
+            if json.contains("\"metadata\"") {
+                return RubyOutputType::RubocopJson;
+            }
         }
 
         // RSpec default output
@@ -55,7 +97,10 @@ impl RubyParser {
         let mut issues = Vec::new();
 
         // Try to parse as JSON
-        let parsed: serde_json::Value = match serde_json::from_str(output) {
+        let Some(json) = self.extract_json_object(output) else {
+            return issues;
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(json) {
             Ok(v) => v,
             Err(_) => return issues,
         };
@@ -129,7 +174,10 @@ impl RubyParser {
     fn parse_rspec_json(&self, output: &str) -> Vec<Issue> {
         let mut issues = Vec::new();
 
-        let parsed: serde_json::Value = match serde_json::from_str(output) {
+        let Some(json) = self.extract_json_object(output) else {
+            return issues;
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(json) {
             Ok(v) => v,
             Err(_) => return issues,
         };
@@ -256,9 +304,17 @@ impl RubyParser {
         while i < lines.len() {
             let line = lines[i];
 
-            // Try parsing as JSON first
-            if i == 0 && (line.trim().starts_with('{') || output.contains("\"examples\":")) {
-                let parsed: serde_json::Value = match serde_json::from_str(output) {
+            // Try parsing as JSON first (extract payload from merged output)
+            if i == 0
+                && (line.trim().starts_with('{')
+                    || output.contains("\"examples\":")
+                    || output.contains("\"metadata\":"))
+            {
+                let Some(json) = self.extract_json_object(output) else {
+                    i += 1;
+                    continue;
+                };
+                let parsed: serde_json::Value = match serde_json::from_str(json) {
                     Ok(v) => v,
                     Err(_) => {
                         i += 1;

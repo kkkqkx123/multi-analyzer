@@ -12,18 +12,18 @@
 
 ## Issue Details (Grouped by File)
 
-### pkg/utils/math.go
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 20 | 16 | Warning | Error return value of `os.Open` is not checked |
-
 ### internal/config/config.go
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 15 | 15 | Warning | Error return value of `os.Setenv` is not checked |
 | 26 | 10 | Warning | error strings should not be capitalized |
+
+### pkg/utils/math.go
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 20 | 16 | Warning | Error return value of `os.Open` is not checked |
 
 ### cmd/myapp/main.go
 

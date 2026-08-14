@@ -1,17 +1,17 @@
 /workspace/multi-analyzer/tests/data/fixtures/cpp-cmake-project/src/main.cpp:5:18: error: use of undeclared identifier 'undefined_var'
-    5 |     int result = undefined_var + 1;
-      |                  ^
+    int result = undefined_var + 1;
+                 ^
 /workspace/multi-analyzer/tests/data/fixtures/cpp-cmake-project/src/main.cpp:10:12: error: use of undeclared identifier 'add'; did you mean 'fadd'?
-   10 |     return add(result, 1);
-      |            ^~~
-      |            fadd
+    return add(result, 1);
+           ^~~
+           fadd
 /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h:24:20: note: 'fadd' declared here
-   24 | __MATHCALL_NARROW (__MATHCALL_NAME (add), __MATHCALL_REDIR_NAME (add), 2);
-      |                    ^
+__MATHCALL_NARROW (__MATHCALL_NAME (add), __MATHCALL_REDIR_NAME (add), 2);
+                   ^
 /usr/include/math.h:565:32: note: expanded from macro '__MATHCALL_NAME'
-  565 | # define __MATHCALL_NAME(name) f ## name
-      |                                ^
-<scratch space>:171:1: note: expanded from here
-  171 | fadd
-      | ^
+# define __MATHCALL_NAME(name) f ## name
+                               ^
+<scratch space>:166:1: note: expanded from here
+fadd
+^
 2 errors generated.

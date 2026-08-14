@@ -957,7 +957,7 @@ mod tests {
             }
         ));
         if let Classification::Matched { subcommand, .. } = result {
-            assert_eq!(subcommand, "format");
+            assert_eq!(subcommand, "-i src/*.cpp");
         }
     }
 
@@ -972,7 +972,7 @@ mod tests {
             }
         ));
         if let Classification::Matched { subcommand, .. } = result {
-            assert_eq!(subcommand, "compile");
+            assert_eq!(subcommand, "/Zs");
         }
     }
 
