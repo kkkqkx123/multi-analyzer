@@ -18,4 +18,4 @@ Core traits and types for the analyzer.
 
 1. **Plugin Architecture**: `BuildAnalyzer` trait provides analysis, `OutputParser` provides parsing. Each plugin implements both.
 2. **Report Format**: Analysis results are converted to Markdown / JSON / HTML via the reporter module.
-3. **Extending**: Add a new plugin in `src/plugins/`, implement `BuildAnalyzer` + `OutputParser`, register in `plugins/mod.rs`.
+3. **Extending**: Add a new plugin in `src/plugins/`, implement `BuildAnalyzer` + `OutputParser`, register in `plugins.rs`.

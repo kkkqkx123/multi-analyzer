@@ -18,8 +18,8 @@ Technology-stack-specific analyzer implementations.
 1. Create `src/plugins/<name>/` directory
 2. Implement `BuildAnalyzer` in `analyzer.rs`
 3. Implement `OutputParser` in `parser.rs`
-4. Create `mod.rs` exporting your types
-5. Register in `src/plugins/mod.rs`
+4. Create `<name>.rs` exporting your types
+5. Register in `src/plugins.rs`
 
 ## Conventions
 

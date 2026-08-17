@@ -4,6 +4,7 @@
 #![cfg(test)]
 #![allow(dead_code)]
 
+#[path = "common/vs_env.rs"]
 pub mod vs_env;
 
 use std::collections::HashMap;

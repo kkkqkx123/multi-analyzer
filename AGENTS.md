@@ -41,7 +41,7 @@ User Input → CLI Parsing → Plugin Selection → Command Execution → Output
 
 1. Create a directory under `plugins/`
 2. Implement `BuildAnalyzer` and `OutputParser`
-3. Register the plugin in `plugins/mod.rs`
+3. Register the plugin in `plugins.rs`
 
 ## Error Types
 
