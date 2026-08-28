@@ -17,6 +17,7 @@ For quick start and common usage, see the main [SKILL.md](../SKILL.md).
 | `--format <format>` | Report format: `markdown`, `json`, `html`, `raw`, `raw-json` |
 | `--no-short-circuit` | Disable success short-circuit (always show full report) |
 | `--max-issues <N>` | Limit analysis to the first N issues (default: unlimited) |
+| `--log-file <path>` | Analyze an existing build log file instead of executing the command (see [Log File Analysis](#log-file-analysis)) |
 | `--stdout` | **No-op** (stdout is the default; kept for backward compatibility) |
 
 ## Report Formats (Detail)
@@ -45,6 +46,26 @@ For quick start and common usage, see the main [SKILL.md](../SKILL.md).
 | ---- | ------- |
 | 0 | Successfully rewritten (command printed to stdout) |
 | 1 | No matching rule / execution failed |
+
+## Log File Analysis
+
+Analyze a pre-existing build log file (saved CI output, terminal capture, or logs from a machine without the build tools installed) **without executing any command**.
+
+```bash
+# Analyze a saved CMake build log — cmake is never run
+analyzer cmake "--build build" --log-file /tmp/zlm_build_warn.log
+
+# Combined with report formats, filters, and output options
+analyzer clang "-fsyntax-only main.cpp" --log-file clang.log --filter-warnings --format json -o clang_report.json
+```
+
+### Behavior
+
+- **No command is executed.** The `<subcommand>` argument is used only to synthesize the command string `<tech-stack> <subcommand>` so command-level TOML filters (e.g. `turbo.toml`) resolve identically to the executing pipeline (which uses `CommandBuilder::command_string()`).
+- The file is read as UTF-8 (invalid bytes are replaced lossily) and capped at **64 MiB**; larger logs are truncated before analysis.
+- Log mode never marks the analysis as failed: `AnalysisResult.exit_code` remains `None` and `command_failed` stays `false`.
+- Post-processing is identical to executing mode — ANSI stripping, TUI frame removal, noise/keep filters, truncation, then parsing and option filtering — so reports for the same text are identical.
+- A missing or unreadable log file fails with an I/O error (the analyzer exits with code 1).
 
 ## Cargo Crate-Specific Options
 

@@ -22,13 +22,6 @@ fn filter_registry() -> &'static FilterRegistry {
     REGISTRY.get_or_init(FilterRegistry::load)
 }
 
-/// Result of a pipeline stage.
-#[derive(Debug)]
-enum StageResult<T> {
-    Complete(T),
-    Failed(Vec<String>),
-}
-
 /// Unified entry point for all plugins.
 ///
 /// Automatically resolves the post-processor by merging:
@@ -51,7 +44,7 @@ pub fn run_analyzer(
     // passthrough of the child process output. They therefore go through the
     // exact same parse pipeline as the other formats; only the reporter differs.
 
-    let processor = resolve_processor(builder, options);
+    let processor = resolve_processor(&builder.command_string(), options);
     let line_filter = PostProcessLineFilter::new(processor);
     // Suppress the "Running: ..." echo under quiet mode so machine-readable
     // output stays clean. The echo is written to stderr regardless; quiet mode
@@ -78,7 +71,7 @@ pub fn run_analyzer(
 
     let command_success = exit_code == 0;
     match parse_and_analyze(parser, &result.filtered, options) {
-        StageResult::Complete(mut r) => {
+        Ok(mut r) => {
             r.exit_code = Some(exit_code);
             r.command_failed = !command_success;
             // Fallback: command failed but no issues parsed → surface the raw
@@ -112,22 +105,24 @@ pub fn run_analyzer(
             guard.complete(Some(exit_code), r.total_issues, command_success);
             Ok(r)
         }
-        StageResult::Failed(w) => {
+        Err(e) => {
             let issue_count = 0;
             guard.complete(Some(exit_code), issue_count, false);
-            // Always set command_failed when parser fails
-            Err(AnalyzerError::ParseError(w.join("; ")))
+            Err(e)
         }
     }
 }
 
 /// Resolve the OutputPostProcessor by merging AnalyzeOptions with TOML filter configs.
-fn resolve_processor(builder: &CommandBuilder, options: &AnalyzeOptions) -> OutputPostProcessor {
+///
+/// `command_str` is used to look up command-specific TOML filters (e.g. turbo).
+/// Shared by the executing pipeline (`run_analyzer`) and the log-analysis
+/// pipeline (`crate::core::log_analyzer`).
+pub(crate) fn resolve_processor(command_str: &str, options: &AnalyzeOptions) -> OutputPostProcessor {
     let base = OutputPostProcessor::from_options(options);
-    let command_str = builder.command_string();
 
     let registry = filter_registry();
-    if let Some(toml_config) = registry.find_filter(&command_str) {
+    if let Some(toml_config) = registry.find_filter(command_str) {
         let toml_processor = compile_toml_filter(toml_config);
         return OutputPostProcessor::merge(base, toml_processor);
     }
@@ -255,23 +250,25 @@ impl LineFilter for PostProcessLineFilter {
     }
 }
 
-/// Run parse + analyze on already-preprocessed output.
-/// Used internally by run_analyzer after streaming execution.
-fn parse_and_analyze(
+/// Parse processed output and build an `AnalysisResult`, applying option filters.
+///
+/// Shared by the executing pipeline (`run_analyzer`) and the log-analysis
+/// pipeline (`crate::core::log_analyzer`).
+pub(crate) fn parse_and_analyze(
     parser: &dyn OutputParser,
     processed_output: &str,
     options: &AnalyzeOptions,
-) -> StageResult<AnalysisResult> {
+) -> Result<AnalysisResult, AnalyzerError> {
     let result = parser.parse(processed_output);
     match result {
         ParseResult::Full(issues) | ParseResult::Degraded(issues, _) => {
             let result = AnalysisResult::from_issues(issues);
-            StageResult::Complete(result.filter_by_options(options))
+            Ok(result.filter_by_options(options))
         }
-        ParseResult::Passthrough(raw) => StageResult::Failed(vec![format!(
+        ParseResult::Passthrough(raw) => Err(AnalyzerError::ParseError(format!(
             "Parser fell back to passthrough ({} chars)",
             raw.len()
-        )]),
+        ))),
     }
 }
 

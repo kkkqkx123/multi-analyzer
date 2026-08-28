@@ -21,6 +21,7 @@
 - **命令预览**：`analyzer rewrite` 预览命令转换结果，不执行分析
 - **多种报告格式**：Markdown、JSON、HTML、Raw (管道分隔)、Raw JSON (JSON Lines)
 - **灵活过滤**：按警告或特定文件路径进行过滤
+- **已有日志分析**：直接分析已保存的构建日志文件（如 CI 或本地构建的完整输出），无需重新执行命令
 - **配置支持**：通过 `.analyzer.toml` 自定义配置
 
 ## 安装
@@ -93,6 +94,9 @@ analyzer cpp clang compile
 
 # 分析 C++/MSVC 项目
 analyzer cpp msvc compile
+
+# 分析已有的构建日志文件（不重新执行命令）
+analyzer cmake "--build build" --log-file /tmp/zlm_build_warn.log
 ```
 
 ### `analyzer run` — 直接运行命令
@@ -140,6 +144,7 @@ analyzer rewrite "npm run lint"
 - `--output <file>`：指定输出文件路径（默认：analysis_report.md）
 - `--format <format>`：指定报告格式：`markdown`、`json`、`html`、`raw`、`raw-json`
 - `--stdout`：将报告输出到标准输出而非写入文件
+- `--log-file <path>`：分析已存在的构建日志文件（如 `/tmp/zlm_build_warn.log`），不执行任何命令；需与 `<tech-stack> <subcommand>` 一起使用，subcommand 用于匹配命令级过滤规则（如 turbo.toml）
 
 ### 报告格式
 

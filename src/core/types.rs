@@ -617,6 +617,9 @@ pub struct AnalyzeOptions {
     pub output_file: Option<String>,
     /// Output to stdout only, do not write to file
     pub stdout_only: bool,
+    /// --log-file <path>: analyze an existing build log file instead of
+    /// executing the command. When set, no external command is run.
+    pub log_file: Option<String>,
     /// Verbosity level
     pub verbosity: Verbosity,
     // C++ related options

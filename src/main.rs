@@ -6,6 +6,7 @@
 //!   analyzer cargo "check"
 //!   analyzer npm "run typecheck"
 //!   analyzer pnpm "exec tsc --noEmit"
+//!   analyzer cmake "--build build" --log-file /tmp/zlm_build_warn.log
 
 use std::env;
 use std::path::Path;
@@ -320,6 +321,7 @@ const VALUE_FLAGS: &[&str] = &[
     "-f",
     "--format",
     "--max-issues",
+    "--log-file",
     // Cargo workspace / target / feature selection
     "--package",
     "-p",
@@ -445,6 +447,11 @@ fn parse_options_from_args(
                             v
                         )),
                     }
+                }
+            }
+            "--log-file" => {
+                if let Some(v) = value {
+                    options.log_file = Some(v.clone());
                 }
             }
 
@@ -732,49 +739,86 @@ fn run_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {
     // The OutputParser trait is implemented by various parsers
     // and provides line-by-line parsing capabilities via template method pattern
 
-    match analyzer.analyze(options) {
-        Ok(result) => {
-            if !options.verbosity.is_minimal() {
-                eprintln!("\nAnalysis complete!");
-                eprintln!("Total issues: {}", result.total_issues);
-            }
+    let result = if let Some(log_path) = &options.log_file {
+        analyze_log(analyzer, log_path, options)
+    } else {
+        analyzer.analyze(options)
+    };
 
-            // Generating reports
-            let reporter = ReporterFactory::create(options.report_format);
-            let report_options =
-                to_report_options(options, &analyzer.tech_stack(), options.subcommand.as_ref());
-            let report = match reporter.generate_with_options(&result, report_options) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Failed to generate report: {}", e);
-                    std::process::exit(1);
-                }
-            };
-
-            if options.stdout_only {
-                // Output to stdout only
-                println!("{}", report);
-            } else {
-                // output report
-                let default_name = format!("analysis_report.{}", options.report_format.extension());
-                let output_path = options.output_file.as_deref().unwrap_or(&default_name);
-
-                if let Err(e) = reporter.write_to_file(&report, Path::new(output_path)) {
-                    eprintln!("Failed to write report: {}", e);
-                    std::process::exit(1);
-                }
-
-                eprintln!("Report written to: {}", output_path);
-            }
-
-            // Print summary
-            print_summary(&result, options.verbosity);
-        }
+    match result {
+        Ok(analysis) => emit_report(analysis, analyzer, options),
         Err(e) => {
             eprintln!("Analysis failed: {}", e);
             std::process::exit(1);
         }
     }
+}
+
+/// Analyze an existing build-log file instead of executing the command.
+///
+/// The command string is synthesized as "<tech-stack> <subcommand>" so that
+/// command-level TOML filters (e.g. turbo.toml) resolve identically to the
+/// executing pipeline (which uses `CommandBuilder::command_string()`).
+fn analyze_log(
+    analyzer: &dyn core::BuildAnalyzer,
+    log_path: &str,
+    options: &AnalyzeOptions,
+) -> Result<core::AnalysisResult, core::AnalyzerError> {
+    let command_str = options
+        .subcommand
+        .as_ref()
+        .map(|s| format!("{} {}", analyzer.name(), s.as_str()))
+        .unwrap_or_else(|| analyzer.name().to_string());
+
+    if !options.verbosity.is_minimal() {
+        eprintln!("Analyzing log file {} ({})...", log_path, command_str);
+    }
+
+    core::analyze_log_file(Path::new(log_path), &command_str, analyzer.parser(), options)
+}
+
+/// Generate and emit the report for an analysis result.
+/// Shared by the executing path and the log-analysis path.
+fn emit_report(
+    result: core::AnalysisResult,
+    analyzer: &dyn core::BuildAnalyzer,
+    options: &AnalyzeOptions,
+) {
+    if !options.verbosity.is_minimal() {
+        eprintln!("\nAnalysis complete!");
+        eprintln!("Total issues: {}", result.total_issues);
+    }
+
+    // Generating reports
+    let reporter = ReporterFactory::create(options.report_format);
+    let report_options =
+        to_report_options(options, &analyzer.tech_stack(), options.subcommand.as_ref());
+    let report = match reporter.generate_with_options(&result, report_options) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to generate report: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    if options.stdout_only {
+        // Output to stdout only
+        println!("{}", report);
+    } else {
+        // output report
+        let default_name = format!("analysis_report.{}", options.report_format.extension());
+        let output_path = options.output_file.as_deref().unwrap_or(&default_name);
+
+        if let Err(e) = reporter.write_to_file(&report, Path::new(output_path)) {
+            eprintln!("Failed to write report: {}", e);
+            std::process::exit(1);
+        }
+
+        eprintln!("Report written to: {}", output_path);
+    }
+
+    // Print summary
+    print_summary(&result, options.verbosity);
 }
 
 fn run_test_analysis(analyzer: &dyn core::BuildAnalyzer, options: &AnalyzeOptions) {

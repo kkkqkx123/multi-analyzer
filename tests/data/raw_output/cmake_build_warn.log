@@ -1,0 +1,15 @@
+[  1%] Building CXX object CMakeFiles/zltoolkit.dir/src/Util/util.cpp.o
+/workspace/zlm/src/Util/util.cpp:42:17: warning: unused variable 'ret' [-Wunused-variable]
+   42 |         int ret = func();
+      |             ^~~
+[  8%] Building CXX object CMakeFiles/zltoolkit.dir/src/Network/socket.cpp.o
+/workspace/zlm/src/Network/socket.cpp:87:9: warning: comparison is always false due to limited range of data type [-Wtype-limits]
+   87 |     if (len > 255) {
+      |         ^~~
+[ 42%] Building CXX object CMakeFiles/zlmediakit.dir/src/Server/MediaServer.cpp.o
+/workspace/zlm/src/Server/MediaServer.cpp:132:12: error: 'MediaSource' was not declared in this scope
+  132 |     MediaSource m;
+      |            ^
+[ 50%] Linking CXX executable media_server
+/usr/bin/ld: warning: libavutil.so.58, needed by /usr/lib/x86_64-linux-gnu/libavcodec.so, not found
+[100%] Built target media_server

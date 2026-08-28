@@ -18,6 +18,9 @@ analyzer run "<raw_shell_command>" [options]
 
 # Preview the equivalent analyzer command without executing
 analyzer rewrite "<raw_shell_command>"
+
+# Analyze an existing build log file without executing the command
+analyzer <tech-stack> "<subcommand>" --log-file <path>
 ```
 
 Results are printed to **stdout** by default (like standard CLI tools).
@@ -167,6 +170,23 @@ analyzer rewrite "go vet ./..."
 - Compound commands (`&&`, `||`, `;`, `|`, `&`) — only the first segment is rewritten
 - Environment variable prefixes (`ENV=val cmd`) are stripped automatically
 
+### Log File Analysis Mode
+
+Analyze a pre-existing build log (e.g. a saved CI or local build output) **without executing any command**:
+
+```bash
+# Analyze a saved CMake build log — cmake is never run
+analyzer cmake "--build build" --log-file /tmp/zlm_build_warn.log
+
+# Works with any report format, filters, and output options
+analyzer cargo "check" --log-file cargo_check.log --filter-warnings --format json -o report.json
+```
+
+- The `<subcommand>` is **not executed**; it is only used to synthesize the command string `<tech-stack> <subcommand>` so command-level TOML filters (e.g. `turbo.toml`) apply identically to the executing pipeline.
+- Log mode never reports a failed command: `exit_code` stays unset and `command_failed` stays `false`.
+- Files are read as UTF-8 and capped at 64 MiB (larger logs are truncated before analysis).
+- Reports are identical to executing-mode reports for the same text.
+
 ## Common Options
 
 | Option | Description |
@@ -181,6 +201,7 @@ analyzer rewrite "go vet ./..."
 | `--format <format>` | Report format: `markdown`, `json`, `html`, `raw`, `raw-json` (default: markdown) |
 | `--no-short-circuit` | Disable success short-circuit (always show full report) |
 | `--max-issues <N>` | Limit analysis to the first N issues |
+| `--log-file <path>` | Analyze an existing build log file instead of executing the command (no external process is run) |
 
 ## Report Formats
 
