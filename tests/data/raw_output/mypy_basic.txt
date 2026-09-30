@@ -2,5 +2,5 @@ setup.py:1:1: error: Library stubs not installed for "setuptools"  [import-untyp
 setup.py:1:1: note: Hint: "python3 -m pip install types-setuptools"
 setup.py:1:1: note: (or run "mypy --install-types" to install all missing stub packages)
 setup.py:1:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
-/root/.pyenv/versions/3.14.4/lib/python3.14/site-packages/_pytest/terminal.py:1729:9: error: Pattern matching is only supported in Python 3.10 and greater  [syntax]
+/root/.pyenv/versions/3.14.7/lib/python3.14/site-packages/_pytest/logging.py:202:5: error: Pattern matching is only supported in Python 3.10 and greater  [syntax]
 Found 2 errors in 2 files (errors prevented further checking)

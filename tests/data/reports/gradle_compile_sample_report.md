@@ -18,6 +18,12 @@
 |------|--------|-------|---------|
 | 22 | 0 | Warning | [deprecation] getYear() in Date has been deprecated |
 
+### /Users/user/project/src/main/kotlin/App.kt
+
+| Line | Column | Level | Message |
+|------|--------|-------|---------|
+| 10 | 0 | Error | unresolved reference: undefinedFunction |
+
 ### /Users/user/project/src/main/java/com/example/Broken.java
 
 | Line | Column | Level | Message |
@@ -31,12 +37,6 @@
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
 | 15 | 0 | Warning | [unchecked] unchecked conversion |
-
-### /Users/user/project/src/main/kotlin/App.kt
-
-| Line | Column | Level | Message |
-|------|--------|-------|---------|
-| 10 | 0 | Error | unresolved reference: undefinedFunction |
 
 ## Raw Output
 

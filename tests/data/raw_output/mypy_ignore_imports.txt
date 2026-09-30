@@ -1,2 +1,2 @@
-/root/.pyenv/versions/3.14.4/lib/python3.14/site-packages/_pytest/terminal.py:1729:9: error: Pattern matching is only supported in Python 3.10 and greater  [syntax]
+/root/.pyenv/versions/3.14.7/lib/python3.14/site-packages/_pytest/logging.py:202:5: error: Pattern matching is only supported in Python 3.10 and greater  [syntax]
 Found 1 error in 1 file (errors prevented further checking)

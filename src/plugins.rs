@@ -49,7 +49,10 @@ pub fn create_registry() -> PluginRegistry {
     registry.register(Box::new(cpp::CMakeAnalyzer::new()));
     registry.register(Box::new(cpp::GccAnalyzer::new()));
     registry.register(Box::new(cpp::ClangAnalyzer::new()));
+    registry.register(Box::new(cpp::ClangCheckAnalyzer::new()));
     registry.register(Box::new(cpp::ClangFormatAnalyzer::new()));
+    registry.register(Box::new(cpp::ClangTidyAnalyzer::new()));
+    registry.register(Box::new(cpp::IwyuAnalyzer::new()));
     registry.register(Box::new(cpp::MsvcAnalyzer::new()));
 
     registry

@@ -1,16 +1,16 @@
-/workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:7: error: cannot find symbol
+/workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:7: error: cannot find symbol
         undefinedVar = 10;
         ^
   symbol:   variable undefinedVar
   location: class Broken
-/workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:10: error: cannot find symbol
+/workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:10: error: cannot find symbol
         undefinedMethod();
         ^
   symbol:   method undefinedMethod()
   location: class Broken
-Note: /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Utils.java uses or overrides a deprecated API.
+Note: /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Utils.java uses or overrides a deprecated API.
 Note: Recompile with -Xlint:deprecation for details.
-Note: /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/App.java uses unchecked or unsafe operations.
+Note: /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/App.java uses unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
 2 errors
 
@@ -19,16 +19,16 @@ FAILURE: Build failed with an exception.
 * What went wrong:
 Execution failed for task ':compileJava'.
 > Compilation failed; see the compiler output below.
-  Note: /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Utils.java uses or overrides a deprecated API.
+  Note: /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Utils.java uses or overrides a deprecated API.
   Note: Recompile with -Xlint:deprecation for details.
-  Note: /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/App.java uses unchecked or unsafe operations.
-  /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:7: error: cannot find symbol
+  Note: /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/App.java uses unchecked or unsafe operations.
+  /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:7: error: cannot find symbol
           undefinedVar = 10;
           ^
     symbol:   variable undefinedVar
     location: class Broken
   Note: Recompile with -Xlint:unchecked for details.
-  /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:10: error: cannot find symbol
+  /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java:10: error: cannot find symbol
           undefinedMethod();
           ^
     symbol:   method undefinedMethod()
@@ -39,4 +39,4 @@ Execution failed for task ':compileJava'.
 > Check your code and dependencies to fix the compilation error(s)
 > Run with --scan to get full insights.
 
-BUILD FAILED in 13s
+BUILD FAILED in 1s

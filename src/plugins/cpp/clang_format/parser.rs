@@ -98,6 +98,8 @@ impl OutputParser for ClangFormatParser {
 mod tests {
     use super::*;
 
+    // ── --dry-run + --Werror (GCC-style ERROR lines) ────────────────
+
     #[test]
     fn test_parse_werror_format() {
         let parser = ClangFormatParser::new();
@@ -112,6 +114,25 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_werror_format_long_path() {
+        let parser = ClangFormatParser::new();
+        let line = "/a/very/long/nested/path/src/components/main.cpp:42:3: error: code should be clang-formatted [-Wclang-format-violations]";
+        let issue = parser.parse_format_line(line).unwrap();
+        assert_eq!(issue.location.file_path, "/a/very/long/nested/path/src/components/main.cpp");
+        assert_eq!(issue.location.line_number, Some(42));
+    }
+
+    #[test]
+    fn test_parse_werror_short_message() {
+        let parser = ClangFormatParser::new();
+        let line = "x.cpp:1:1: error: clang-formatted [-Wclang-format-violations]";
+        let issue = parser.parse_format_line(line).unwrap();
+        assert_eq!(issue.location.file_path, "x.cpp");
+    }
+
+    // ── --dry-run file list format ────────────────────────────────
+
+    #[test]
     fn test_parse_file_list_format() {
         let parser = ClangFormatParser::new();
         let line = "/path/to/file.cpp";
@@ -123,11 +144,57 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_file_list_c_extension() {
+        let parser = ClangFormatParser::new();
+        let issue = parser.parse_format_line("src/main.c").unwrap();
+        assert_eq!(issue.location.file_path, "src/main.c");
+    }
+
+    #[test]
+    fn test_parse_file_list_all_cpp_extensions() {
+        let parser = ClangFormatParser::new();
+        for ext in &["cpp", "c", "hpp", "h", "cc", "cxx", "hxx"] {
+            let line = format!("/tmp/file.{}", ext);
+            let issue = parser.parse_format_line(&line);
+            assert!(
+                issue.is_some(),
+                "extension .{} should be recognized",
+                ext
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_file_list_windows_path() {
+        let parser = ClangFormatParser::new();
+        let issue = parser.parse_format_line("C:\\Users\\me\\proj\\src\\main.cpp").unwrap();
+        assert_eq!(issue.location.file_path, "C:\\Users\\me\\proj\\src\\main.cpp");
+    }
+
+    #[test]
+    fn test_parse_file_list_no_extension_ignored() {
+        let parser = ClangFormatParser::new();
+        assert!(parser.parse_format_line("CMakeLists.txt").is_none());
+        assert!(parser.parse_format_line("Makefile").is_none());
+        assert!(parser.parse_format_line("file.o").is_none());
+    }
+
+    // ── Noise filtering ───────────────────────────────────────────
+
+    #[test]
     fn test_parse_skip_non_code() {
         let parser = ClangFormatParser::new();
         assert!(parser.parse_format_line("").is_none());
         assert!(parser.parse_format_line("some random text").is_none());
     }
+
+    #[test]
+    fn test_parse_skip_clang_format_version_banner() {
+        let parser = ClangFormatParser::new();
+        assert!(parser.parse_format_line("clang-format version 16.0.0").is_none());
+    }
+
+    // ── Full parse ─────────────────────────────────────────────────
 
     #[test]
     fn test_parse_full_output() {
@@ -137,5 +204,34 @@ mod tests {
         let result = parser.parse(output);
         let issues = result.data().unwrap();
         assert_eq!(issues.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_full_werror_output() {
+        let parser = ClangFormatParser::new();
+        let output = "\
+src/a.cpp:1:1: error: code should be clang-formatted [-Wclang-format-violations]
+src/b.cpp:2:2: error: code should be clang-formatted [-Wclang-format-violations]";
+
+        let result = parser.parse(output);
+        let issues = result.data().unwrap();
+        assert_eq!(issues.len(), 2);
+        assert!(matches!(issues[0].level, IssueLevel::Error));
+    }
+
+    #[test]
+    fn test_parse_empty() {
+        let parser = ClangFormatParser::new();
+        let result = parser.parse("");
+        let issues = result.data().unwrap();
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_parse_whitespace_only() {
+        let parser = ClangFormatParser::new();
+        let result = parser.parse("\n\n  \n");
+        let issues = result.data().unwrap();
+        assert!(issues.is_empty());
     }
 }

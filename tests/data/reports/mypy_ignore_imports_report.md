@@ -12,11 +12,11 @@
 
 ## Issue Details (Grouped by File)
 
-### /root/.pyenv/versions/3.14.4/lib/python3.14/site-packages/_pytest/terminal.py
+### /root/.pyenv/versions/3.14.7/lib/python3.14/site-packages/_pytest/logging.py
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|
-| 1729 | 9 | Error | Pattern matching is only supported in Python 3.10 and greater  [syntax] |
+| 202 | 5 | Error | Pattern matching is only supported in Python 3.10 and greater  [syntax] |
 
 ## Raw Output
 

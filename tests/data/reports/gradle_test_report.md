@@ -12,7 +12,7 @@
 
 ## Issue Details (Grouped by File)
 
-### /workspace/multi-analyzer/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java
+### /workspace/tests/data/fixtures/gradle-project/src/main/java/com/example/Broken.java
 
 | Line | Column | Level | Message |
 |------|--------|-------|---------|

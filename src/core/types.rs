@@ -433,7 +433,10 @@ pub enum TechStack {
     CMake,
     Gcc,
     Clang,
+    ClangCheck,
     ClangFormat,
+    ClangTidy,
+    IncludeWhatYouUse,
     Msvc,
 }
 
@@ -459,7 +462,10 @@ impl TechStack {
             TechStack::CMake => "cmake",
             TechStack::Gcc => "gcc",
             TechStack::Clang => "clang",
+            TechStack::ClangCheck => "clang-check",
             TechStack::ClangFormat => "clang-format",
+            TechStack::ClangTidy => "clang-tidy",
+            TechStack::IncludeWhatYouUse => "include-what-you-use",
             TechStack::Msvc => "msvc",
         }
     }
@@ -474,7 +480,10 @@ impl TechStack {
             TechStack::CMake
                 | TechStack::Gcc
                 | TechStack::Clang
+                | TechStack::ClangCheck
                 | TechStack::ClangFormat
+                | TechStack::ClangTidy
+                | TechStack::IncludeWhatYouUse
                 | TechStack::Msvc
         )
     }
@@ -504,7 +513,10 @@ impl std::str::FromStr for TechStack {
             "cmake" | "cmake-build" => Ok(TechStack::CMake),
             "gcc" | "g++" => Ok(TechStack::Gcc),
             "clang" | "clang++" => Ok(TechStack::Clang),
+            "clang-check" | "clangcheck" => Ok(TechStack::ClangCheck),
             "clang-format" => Ok(TechStack::ClangFormat),
+            "clang-tidy" | "clangtidy" | "tidy" => Ok(TechStack::ClangTidy),
+            "include-what-you-use" | "iwyu" => Ok(TechStack::IncludeWhatYouUse),
             "msvc" | "cl" => Ok(TechStack::Msvc),
             _ => Err(format!("Unknown tech stack: {}", s)),
         }
